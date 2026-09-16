@@ -43,7 +43,8 @@ magicnet_singbox_ai_selectors_canonical() (
       def proxy_node:
         ((.tag // "") | startswith("magicnet-chain-") | not)
           and (.type == "shadowsocks" or .type == "vmess" or .type == "vless" or .type == "trojan"
-          or .type == "hysteria2" or .type == "anytls" or .type == "tuic" or .type == "socks");
+          or .type == "hysteria2" or .type == "anytls" or .type == "tuic" or .type == "socks"
+          or .type == "http");
       def reserved_tag:
         . as $tag
         | [
@@ -76,6 +77,10 @@ magicnet_singbox_ai_selectors_canonical() (
                 and (((has("username") | not) and (has("password") | not))
                   or ((.username | type == "string" and length > 0)
                     and (.password | type == "string" and length > 0)))
+            elif .type == "http" then
+              (((has("username") | not) and (has("password") | not))
+                or ((.username | type == "string" and length > 0)
+                  and (.password | type == "string" and length > 0)))
             else false
             end);
       [

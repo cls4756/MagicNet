@@ -52,7 +52,7 @@ magicnet_singbox_chain_apply() {
           and (.server_port | type == "number" and . == floor and . >= 1 and . <= 65535)
           and (.type == "shadowsocks" or .type == "vmess" or .type == "vless"
             or .type == "trojan" or .type == "hysteria2" or .type == "anytls"
-            or .type == "tuic" or .type == "socks");
+            or .type == "tuic" or .type == "socks" or .type == "http");
       def policy_tags($key):
         if (($policy[$key] // []) | type) == "array"
         then ($policy[$key] | map(select(valid_tag)) | unique_strings)

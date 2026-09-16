@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { decodeMachineData, machineErrorCode, machineFailureText, parseMachineDns, parseMachineNetwork, parseMachineRuntime } from "./src/composables/machineStatus.ts";
+import { decodeMachineData, machineErrorCode, machineFailureText, parseMachineDns, parseMachineDomainForward, parseMachineNetwork, parseMachineRuntime } from "./src/composables/machineStatus.ts";
 
 const envelope = (command, data) => JSON.stringify({ schema: 1, ok: true, command, data });
 const dns = { profile: "default", primary: "bootstrap-local-dns", secondary: null, transport: "default" };
@@ -9,6 +9,7 @@ const network = {
   effective: { ipv6_mode: "ipv4_only", stack: "mixed", mtu: 1280, udp_timeout: "3m" },
 };
 const unsupported = JSON.stringify({ schema: 1, ok: false, command: "machine.error", error: { code: "machine.unsupported_command", message: "unsupported machine command" } });
+const domainForward = { configured: "enabled", core_support: "available", effective: "enabled", tcp_rule: true };
 
 test("machine decoder accepts exactly one response and bridge diagnostics", () => {
   const text = envelope("network.status", network);
@@ -139,4 +140,37 @@ test("machine transition states keep pending, stable, rollback and unknown disti
     const value = parseRuntime({...runtime, transparent:{...runtime.transparent,transition}});
     assert.equal(value.transparentTransition, expected);
   }
+});
+
+test("domain forwarding keeps intent, core capability and materialized state apart", () => {
+  assert.deepEqual(parseMachineDomainForward(envelope("domain-forward.status", domainForward)), domainForward);
+  const pending = { configured: "enabled", core_support: "available", effective: "pending", tcp_rule: false };
+  assert.deepEqual(parseMachineDomainForward(envelope("domain-forward.status", pending)), pending);
+  const unsupportedCore = { configured: "enabled", core_support: "unavailable", effective: "unsupported", tcp_rule: false };
+  assert.deepEqual(parseMachineDomainForward(envelope("domain-forward.status", unsupportedCore)), unsupportedCore);
+  const disabled = { configured: "disabled", core_support: "available", effective: "disabled", tcp_rule: false };
+  assert.deepEqual(parseMachineDomainForward(envelope("domain-forward.status", disabled)), disabled);
+});
+
+test("domain forwarding rejects contradictions instead of inventing a working feature", () => {
+  // A stale rule may survive a disable, but the report must still say disabled.
+  assert.deepEqual(
+    parseMachineDomainForward(envelope("domain-forward.status", {
+      configured: "disabled", core_support: "available", effective: "disabled", tcp_rule: true,
+    })),
+    { configured: "disabled", core_support: "available", effective: "disabled", tcp_rule: true },
+  );
+  for (const data of [
+    { ...domainForward, effective: "disabled" },
+    { ...domainForward, tcp_rule: false },
+    { ...domainForward, configured: "disabled" },
+    { ...domainForward, core_support: "maybe" },
+    { ...domainForward, effective: "unknown" },
+    { ...domainForward, tcp_rule: "yes" },
+    {},
+  ]) {
+    assert.equal(parseMachineDomainForward(envelope("domain-forward.status", data)), null, JSON.stringify(data));
+  }
+  assert.equal(parseMachineDomainForward(envelope("network.status", domainForward)), null);
+  assert.equal(parseMachineDomainForward(unsupported), null);
 });

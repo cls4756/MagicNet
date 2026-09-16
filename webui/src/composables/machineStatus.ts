@@ -14,6 +14,12 @@ export type NetworkPolicyStatus = {
   configured: { ipv6_mode: string; mtu: number; udp_timeout: string };
   effective: { ipv6_mode: string; stack: string; mtu: number | null; udp_timeout: string };
 };
+export type DomainForwardStatus = {
+  configured: "enabled" | "disabled";
+  core_support: "available" | "unavailable";
+  effective: "enabled" | "disabled" | "pending" | "unsupported";
+  tcp_rule: boolean;
+};
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -79,6 +85,29 @@ export function parseMachineDns(text: string): DnsState | null {
     secondary: data.secondary ?? "",
     transport: data.transport,
   };
+}
+
+/**
+ * A disabled toggle can never be effective, an enabled and effective toggle
+ * always carries the override rule, and an enabled but ineffective toggle must
+ * stay a bounded reason. The CLI could not report success for an unsupported
+ * core, and this parser refuses to turn a contradiction into a working feature.
+ */
+export function parseMachineDomainForward(text: string): DomainForwardStatus | null {
+  const data = decodeMachineData(text, "domain-forward.status");
+  if (!data) return null;
+  const { configured, core_support: coreSupport, effective, tcp_rule: tcpRule } = data;
+  if (configured !== "enabled" && configured !== "disabled") return null;
+  if (coreSupport !== "available" && coreSupport !== "unavailable") return null;
+  if (effective !== "enabled" && effective !== "disabled" && effective !== "pending" &&
+    effective !== "unsupported") return null;
+  if (typeof tcpRule !== "boolean") return null;
+  if (configured === "disabled" && effective !== "disabled") return null;
+  if (effective === "enabled" && (configured !== "enabled" || !tcpRule)) return null;
+  if (configured === "enabled" && tcpRule && effective !== "enabled") return null;
+  if (configured === "enabled" && !tcpRule && effective !== "pending" && effective !== "unsupported")
+    return null;
+  return { configured, core_support: coreSupport, effective, tcp_rule: tcpRule };
 }
 
 export function parseMachineNetwork(text: string): NetworkPolicyStatus | null {

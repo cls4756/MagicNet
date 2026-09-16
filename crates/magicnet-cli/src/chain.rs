@@ -227,6 +227,7 @@ fn base_node_exists(app: &App, tag: &str) -> Result<bool, String> {
                                 | "anytls"
                                 | "tuic"
                                 | "socks"
+                                | "http"
                         )
                     )
             })

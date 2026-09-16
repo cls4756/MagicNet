@@ -34,7 +34,8 @@ import {
   updateOperationCapture,
 } from "@/composables/operationCapture";
 import { refreshAllNotice } from "@/composables/refreshAllState";
-import { machineFailureText, parseMachineDns, parseMachineNetwork, parseMachineRuntime, parseMachineSubscription, parseMachineWifi, type NetworkPolicyStatus } from "@/composables/machineStatus";
+import { readDevicePackages } from "@/composables/devicePackages";
+import { machineFailureText, parseMachineDns, parseMachineDomainForward, parseMachineNetwork, parseMachineRuntime, parseMachineSubscription, parseMachineWifi, type DomainForwardStatus, type NetworkPolicyStatus } from "@/composables/machineStatus";
 import {
   blockDefaults,
   dnsDefaults,
@@ -840,6 +841,16 @@ async function refreshPackages(
   quiet = false,
   foregroundToken?: number,
 ): Promise<boolean> {
+  // The KernelSU bridge answers with every installed package plus its display
+  // name in one synchronous call, so a name search can filter the whole list
+  // locally. The CLI only filters package names server-side, which would hide an
+  // app whose label matches but whose package name does not, so it stays the
+  // fallback for managers without the package API.
+  const devicePackages = readDevicePackages();
+  if (devicePackages.length) {
+    state.packages = devicePackages;
+    return true;
+  }
   const query = state.packageQuery.trim();
   const command = startForegroundCommand(
     `app packages ${shellQuote(query)}`,
@@ -974,6 +985,18 @@ async function refreshNetwork(quiet = false): Promise<NetworkPolicyStatus | null
   return canUpdateRefreshUi(command.token) ? network : null;
 }
 
+async function refreshDomainForward(quiet = false): Promise<DomainForwardStatus | null> {
+  const label = t("读取域名转发状态");
+  const command = startForegroundCommand("--json domain-forward status", label, quiet);
+  const text = await command.promise;
+  if (markQuietFailure(label, text, command.token)) return null;
+  const status = parseMachineDomainForward(text);
+  if (!status) {
+    markQuietFailure(label, machineFailureText(text), command.token);
+    return null;
+  }
+  return canUpdateRefreshUi(command.token) ? status : null;
+}
 async function refreshWarp(
   quiet = false,
   foregroundToken?: number,
@@ -1300,6 +1323,7 @@ export function useMagicNet() {
     refreshMcp,
     refreshDns,
     refreshNetwork,
+    refreshDomainForward,
     refreshWarp,
     refreshWifiPolicy,
     createIssue,

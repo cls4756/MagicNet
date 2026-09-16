@@ -397,6 +397,12 @@ fn sourced_conf_value_is_allowed(rel: &str, key: &str, value: &str) -> bool {
         (".config/magicnet/network-policy.conf", "MAGICNET_UDP_TIMEOUT") => {
             matches!(value, "1m" | "3m" | "5m" | "10m" | "15m" | "30m")
         }
+        (".config/magicnet/domain-forward.conf", "MAGICNET_DOMAIN_FORWARD") => {
+            matches!(
+                value,
+                "0" | "1" | "true" | "false" | "yes" | "no" | "on" | "off"
+            )
+        }
         (".config/magicnet/wifi-policy.conf", "MAGICNET_WIFI_POLICY_ENABLED") => {
             matches!(value, "0" | "1")
         }
@@ -434,6 +440,7 @@ fn backup_files() -> &'static [&'static str] {
         ".config/magicnet/singbox-config-repo.conf",
         ".config/magicnet/transparent-mode.conf",
         ".config/magicnet/network-policy.conf",
+        ".config/magicnet/domain-forward.conf",
         ".config/magicnet/wifi-policy.conf",
         ".config/magicnet/wifi-ssid.list",
         ".config/magicnet/wifi-bssid.list",

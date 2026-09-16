@@ -11,9 +11,11 @@ import PageHeader from "@/components/ui/PageHeader.vue";
 import RemovableTag from "@/components/ui/RemovableTag.vue";
 import SearchField from "@/components/ui/SearchField.vue";
 import { useActionLock } from "@/composables/useActionLock";
+import { devicePackageIconsAvailable } from "@/composables/devicePackages";
 import { useMagicNet } from "@/composables/useMagicNet";
 import { copyText, execFailed, redactedCliPreview } from "@/utils";
 import AppPolicyRouteGuide from "./AppPolicyRouteGuide.vue";
+import { filterVisiblePackages, packageDisplayName, packageIconUrl, packageInitial } from "./appPackageList";
 import { buildAppPolicySummary, formatAppPolicyFullReport, formatAppPolicySafeReport, isValidPackageName } from "./appPolicyInsights";
 import { buildAppPolicyChangePlan, type AppPolicyChangeOperation, type AppPolicyChangePlan } from "./appPolicyChangePlan";
 
@@ -43,13 +45,18 @@ const recycledBypass = computed(() => {
 const installedNames = computed(() => new Set(state.packages.map((item) => item.packageName)));
 
 const filteredPackages = computed(() => {
-  const query = state.packageQuery.trim().toLowerCase();
-  const listed = state.packages.filter((item) => {
-    if (!query) return true;
-    return item.packageName.toLowerCase().includes(query);
-  });
-  return listed.slice(0, 120);
+  return filterVisiblePackages(state.packages, state.packageQuery, 120);
 });
+const packageIconsAvailable = devicePackageIconsAvailable();
+const appIcon = (packageName: string): string | null =>
+  packageIconUrl(packageName, packageIconsAvailable);
+const installedLabels = computed(() => {
+  const labels = new Map<string, string>();
+  for (const app of state.packages) labels.set(app.packageName, packageDisplayName(app));
+  return labels;
+});
+const packageLabel = (packageName: string): string =>
+  installedLabels.value.get(packageName) ?? packageName;
 const visiblePackageNames = computed(() => filteredPackages.value.map((app) => app.packageName));
 const allVisibleSelected = computed(() => (
   visiblePackageNames.value.length > 0
@@ -548,7 +555,7 @@ onMounted(() => {
     <div class="grid gap-3 lg:grid-cols-[minmax(0,1.25fr)_minmax(280px,0.75fr)]">
       <Card class="grid gap-3">
         <div class="flex flex-wrap items-center gap-2">
-          <SearchField v-model="state.packageQuery" :placeholder="t('搜索已安装应用包名')" @keyup.enter="searchPackages" />
+          <SearchField v-model="state.packageQuery" :placeholder="t('搜索应用名称或包名')" @keyup.enter="searchPackages" />
           <Button variant="secondary" :loading="isRunning('search-packages')" @click="searchPackages">{{ t('重新读取') }}</Button>
         </div>
         <div v-if="selectedPackages.length" class="flex min-w-0 flex-wrap items-center gap-2">
@@ -568,10 +575,22 @@ onMounted(() => {
                 type="checkbox"
                 class="size-4 shrink-0 accent-[var(--mn-cactus)]"
                 :checked="selectedPackages.includes(app.packageName)"
-                :aria-label="t('选择 {value}', { value: app.packageName })"
+                :aria-label="t('选择 {value}', { value: packageDisplayName(app) })"
                 @change="togglePackageSelection(app.packageName)"
               >
-              <span class="min-w-0 break-all text-sm text-[var(--mn-ink-soft)]">{{ app.packageName }}</span>
+              <img
+                v-if="appIcon(app.packageName)"
+                :src="appIcon(app.packageName) ?? ''"
+                alt=""
+                class="size-8 shrink-0 rounded-md"
+                loading="lazy"
+                decoding="async"
+              >
+              <span v-else class="flex size-8 shrink-0 items-center justify-center rounded-md bg-[var(--mn-ivory)] text-xs font-medium text-[var(--mn-ink-muted)]" aria-hidden="true">{{ packageInitial(app) }}</span>
+              <span class="grid min-w-0 gap-0.5">
+                <span class="min-w-0 break-all text-sm text-[var(--mn-ink-soft)]">{{ packageDisplayName(app) }}</span>
+                <span v-if="packageDisplayName(app) !== app.packageName" class="min-w-0 break-all text-xs text-[var(--mn-ink-faint)]">{{ app.packageName }}</span>
+              </span>
             </label>
             <Button size="sm" variant="outline" :loading="isRunning(`pick-proxy-${app.packageName}`)" @click="requestAddPackage(app.packageName, 'proxy', `pick-proxy-${app.packageName}`)">{{ t('代理') }}</Button>
             <Button size="sm" variant="outline" :loading="isRunning(`pick-direct-${app.packageName}`)" @click="requestAddPackage(app.packageName, 'direct', `pick-direct-${app.packageName}`)">{{ t('直连') }}</Button>
@@ -592,7 +611,10 @@ onMounted(() => {
           <CheckCircle2 class="shrink-0 text-[var(--mn-ink-muted)]" :size="18" />
         </div>
         <div class="flex max-h-64 flex-wrap gap-2 overflow-auto">
-          <span v-for="pkg in availableRecommendedBypass" :key="pkg" class="mn-tag text-[var(--mn-ink-soft)]">{{ pkg }}</span>
+          <span v-for="pkg in availableRecommendedBypass" :key="pkg" class="mn-tag text-[var(--mn-ink-soft)]">
+            <span class="min-w-0 break-all">{{ packageLabel(pkg) }}</span>
+            <span v-if="packageLabel(pkg) !== pkg" class="min-w-0 break-all text-xs opacity-70">{{ pkg }}</span>
+          </span>
           <em v-if="!availableRecommendedBypass.length" class="mn-empty">{{ t('推荐项已在名单中，或当前设备未读取到匹配应用。') }}</em>
         </div>
       </Card>
@@ -635,7 +657,12 @@ onMounted(() => {
             :disabled="isRunning(`remove-proxy-${pkg}`)"
             :title="t('移除')"
             @remove="requestRemoveApp(pkg, 'proxy')"
-          >{{ pkg }}</RemovableTag>
+          >
+            <span class="grid min-w-0 gap-0.5">
+              <span class="min-w-0 break-all">{{ packageLabel(pkg) }}</span>
+              <span v-if="packageLabel(pkg) !== pkg" class="min-w-0 break-all text-xs opacity-70">{{ pkg }}</span>
+            </span>
+          </RemovableTag>
           <em v-if="!state.appPolicy.proxy.length" class="mn-empty">{{ t('暂无应用') }}</em>
         </div>
       </Card>
@@ -648,7 +675,12 @@ onMounted(() => {
             :disabled="isRunning(`remove-direct-${pkg}`)"
             :title="t('移除')"
             @remove="requestRemoveApp(pkg, 'direct')"
-          >{{ pkg }}</RemovableTag>
+          >
+            <span class="grid min-w-0 gap-0.5">
+              <span class="min-w-0 break-all">{{ packageLabel(pkg) }}</span>
+              <span v-if="packageLabel(pkg) !== pkg" class="min-w-0 break-all text-xs opacity-70">{{ pkg }}</span>
+            </span>
+          </RemovableTag>
           <em v-if="!state.appPolicy.direct.length" class="mn-empty">{{ t('暂无应用') }}</em>
         </div>
       </Card>
@@ -661,7 +693,12 @@ onMounted(() => {
             :disabled="isRunning(`remove-bypass-${pkg}`)"
             :title="t('移入回收站')"
             @remove="requestRemoveApp(pkg, 'bypass')"
-          >{{ pkg }}</RemovableTag>
+          >
+            <span class="grid min-w-0 gap-0.5">
+              <span class="min-w-0 break-all">{{ packageLabel(pkg) }}</span>
+              <span v-if="packageLabel(pkg) !== pkg" class="min-w-0 break-all text-xs opacity-70">{{ pkg }}</span>
+            </span>
+          </RemovableTag>
           <em v-if="!state.appPolicy.bypass.length" class="mn-empty">{{ t('暂无应用') }}</em>
         </div>
       </Card>
@@ -685,7 +722,10 @@ onMounted(() => {
           :title="t('加回 Bypass')"
           @remove="requestRestoreBypass(pkg)"
         >
-          {{ pkg }}
+          <span class="grid min-w-0 gap-0.5">
+            <span class="min-w-0 break-all">{{ packageLabel(pkg) }}</span>
+            <span v-if="packageLabel(pkg) !== pkg" class="min-w-0 break-all text-xs opacity-70">{{ pkg }}</span>
+          </span>
           <template #icon><RotateCcw :size="14" /></template>
         </RemovableTag>
         <em v-if="!recycledBypass.length" class="mn-empty">{{ t('回收站为空') }}</em>

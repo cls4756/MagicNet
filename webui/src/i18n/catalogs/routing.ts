@@ -51,7 +51,7 @@ export default {
   "仅接管名单中的应用。": ["Capture only apps in the lists.", "Перехватывать только приложения из списков."],
   "接管全部应用，绕过名单除外。": ["Capture all apps except the bypass list.", "Перехватывать все приложения, кроме списка обхода."],
   "同一 Android UID 的应用会一起生效。": ["Apps sharing an Android UID are affected together.", "Изменения затрагивают все приложения с одним Android UID."],
-  "搜索已安装应用包名": ["Search installed app package names", "Поиск по именам пакетов установленных приложений"],
+  "搜索应用名称或包名": ["Search app names or package names", "Поиск по названию приложения или имени пакета"],
   "重新读取": ["Reload", "Загрузить заново"],
   "取消可见项": ["Deselect visible", "Снять выбор видимых"],
   "选择可见项": ["Select visible", "Выбрать видимые"],

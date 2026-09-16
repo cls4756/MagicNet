@@ -51,22 +51,22 @@ magicnet_singbox_extract_share_links() {
     ' "$_source_file")
     _first_line_lc=$(printf '%s' "$_first_line" | tr '[:upper:]' '[:lower:]')
     case "$_first_line_lc" in
-    vless://* | anytls://* | tuic://* | hysteria2://* | hy2://* | trojan://* | vmess://* | ss://* | socks://* | socks5://*)
+    vless://* | anytls://* | tuic://* | hysteria2://* | hy2://* | trojan://* | vmess://* | ss://* | socks://* | socks5://* | http://* | https://*)
         tr -d '\r' <"$_source_file" |
-            grep -E -i '^[[:space:]]*(vless|anytls|tuic|hysteria2|hy2|trojan|vmess|ss|socks|socks5)://' |
+            grep -E -i '^[[:space:]]*(vless|anytls|tuic|hysteria2|hy2|trojan|vmess|ss|socks|socks5|https?)://' |
             sed 's/^[[:space:]]*//' >"$_current_links_file"
         ;;
     *)
         if command -v base64 >/dev/null 2>&1; then
             base64 -d "$_source_file" 2>/dev/null |
                 tr -d '\r' |
-                grep -E -i '^[[:space:]]*(vless|anytls|tuic|hysteria2|hy2|trojan|vmess|ss|socks|socks5)://' |
+                grep -E -i '^[[:space:]]*(vless|anytls|tuic|hysteria2|hy2|trojan|vmess|ss|socks|socks5|https?)://' |
                 sed 's/^[[:space:]]*//' >"$_current_links_file"
             if [ ! -s "$_current_links_file" ]; then
                 tr '_-' '/+' <"$_source_file" 2>/dev/null |
                     base64 -d 2>/dev/null |
                     tr -d '\r' |
-                    grep -E -i '^[[:space:]]*(vless|anytls|tuic|hysteria2|hy2|trojan|vmess|ss|socks|socks5)://' |
+                    grep -E -i '^[[:space:]]*(vless|anytls|tuic|hysteria2|hy2|trojan|vmess|ss|socks|socks5|https?)://' |
                     sed 's/^[[:space:]]*//' >"$_current_links_file"
             fi
         else
@@ -117,6 +117,39 @@ magicnet_singbox_emit_node_json() {
         [ -n "$_password" ] || return 1
         printf '{"type":"shadowsocks","tag":"%s","server":"%s","server_port":%s,"method":"%s","password":"%s"}' \
             "$_name" "$_server" "$_port" "$_cipher" "$_password"
+        ;;
+    http | https)
+        # Clash: username + password (+ optional tls / sni / skip-cert-verify).
+        # Mihomo encodes an HTTPS proxy as type http with tls: true.
+        _username=$(magicnet_yaml_value username)
+        _password=$(magicnet_yaml_value password)
+        if { [ -n "$_username" ] && [ -z "$_password" ]; } ||
+            { [ -z "$_username" ] && [ -n "$_password" ]; }; then
+            return 1
+        fi
+        _tls=$(magicnet_yaml_value tls)
+        if [ "$_type" = "https" ]; then
+            _tls=true
+        fi
+        printf '{"type":"http","tag":"%s","server":"%s","server_port":%s' \
+            "$_name" "$_server" "$_port"
+        if [ -n "$_username" ]; then
+            printf ',"username":"%s","password":"%s"' \
+                "$(magicnet_json_escape "$_username")" "$(magicnet_json_escape "$_password")"
+        fi
+        if magicnet_truthy "$_tls"; then
+            _sni=$(magicnet_yaml_value sni)
+            [ -n "$_sni" ] || _sni=$(magicnet_yaml_value servername)
+            [ -n "$_sni" ] || _sni="$_server"
+            _insecure=$(magicnet_yaml_value skip-cert-verify)
+            [ -n "$_insecure" ] || _insecure=$(magicnet_yaml_value insecure)
+            printf ',"tls":{"enabled":true,"server_name":"%s"' "$(magicnet_json_escape "$_sni")"
+            if magicnet_truthy "$_insecure"; then
+                printf ',"insecure":true'
+            fi
+            printf '}'
+        fi
+        printf '}'
         ;;
     socks | socks5)
         _version=$(magicnet_yaml_value version)
@@ -383,6 +416,45 @@ EOF
             [ -n "$_sni" ] || _sni="$_server"
             _sni_json=$(magicnet_json_escape "$_sni")
             printf ',"tls":{"enabled":true,"server_name":"%s"}' "$_sni_json"
+        fi
+        printf '}'
+        ;;
+    http | https)
+        # http://user:pass@host:port#tag / https://user:pass@host:port#tag
+        # Credentials are optional; https enables TLS to the proxy itself.
+        _port=$(magicnet_singbox_normalize_port "$_port") || return 1
+        _username=""
+        _password=""
+        case "$_base" in
+        *@*)
+            _credentials=$(magicnet_percent_decode "$_userinfo") || return 1
+            case "$_credentials" in
+            *:*) ;;
+            *) return 1 ;;
+            esac
+            _username=${_credentials%%:*}
+            _password=${_credentials#*:}
+            [ -n "$_username" ] || return 1
+            [ -n "$_password" ] || return 1
+            ;;
+        esac
+        printf '{"type":"http","tag":"%s","server":"%s","server_port":%s' \
+            "$_tag" "$_server" "$_port"
+        if [ -n "$_username" ]; then
+            printf ',"username":"%s","password":"%s"' \
+                "$(magicnet_json_escape "$_username")" "$(magicnet_json_escape "$_password")"
+        fi
+        if [ "$_scheme" = "https" ]; then
+            _sni=$(magicnet_uri_query_value sni "$_query")
+            [ -n "$_sni" ] || _sni=$(magicnet_uri_query_value servername "$_query")
+            [ -n "$_sni" ] || _sni="$_server"
+            _insecure=$(magicnet_uri_query_value insecure "$_query")
+            [ -n "$_insecure" ] || _insecure=$(magicnet_uri_query_value allowInsecure "$_query")
+            printf ',"tls":{"enabled":true,"server_name":"%s"' "$(magicnet_json_escape "$_sni")"
+            if magicnet_truthy "$_insecure"; then
+                printf ',"insecure":true'
+            fi
+            printf '}'
         fi
         printf '}'
         ;;

@@ -18,6 +18,7 @@ for _magicnet_lib in \
     transparent \
     webui_panel \
     singbox_route_rules \
+    domain_forward \
     blocklist \
     routes \
     warp \

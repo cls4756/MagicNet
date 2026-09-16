@@ -38,6 +38,7 @@ tuic://00000000-0000-4000-8000-000000000002:fixture-password@tuic.invalid:443#fi
 TROJAN://fixture%40password@trojan.invalid:443?sni=trojan%2Eexample&allowInsecure=1#fixture-trojan
 socks://fixture%20user:fixture%40password@socks.invalid:1080#fixture%20socks
 socks5://Zml4dHVyZS11c2VyOmZpeHR1cmUtcGFzc3dvcmQ@socks5.invalid:1081#fixture-socks5
+http://fixture-user:fixture-password@http.invalid:8080#fixture-http
 EOF
 
 assert_extracted_links() {
@@ -47,10 +48,10 @@ assert_extracted_links() {
     local count
 
     count="$(magicnet_singbox_extract_share_links "$source_file" "$nodes_dir")"
-    [[ "$count" == "6" ]] || fail "$case_name extraction returned $count nodes, expected 6"
-    [[ "$(wc -l <"$nodes_dir/links.txt")" == "6" ]] \
-        || fail "$case_name links.txt does not contain exactly 6 links"
-    for scheme in vless anytls tuic trojan socks socks5; do
+    [[ "$count" == "7" ]] || fail "$case_name extraction returned $count nodes, expected 7"
+    [[ "$(wc -l <"$nodes_dir/links.txt")" == "7" ]] \
+        || fail "$case_name links.txt does not contain exactly 7 links"
+    for scheme in vless anytls tuic trojan socks socks5 http; do
         grep -Eiq "^${scheme}://" "$nodes_dir/links.txt" \
             || fail "$case_name links.txt is missing ${scheme}://"
     done
@@ -245,6 +246,121 @@ if magicnet_singbox_emit_share_link_json "$socks_malformed_percent_file" >"$tmp_
     fail "malformed percent-encoded SOCKS credentials were accepted"
 fi
 
+# HTTP proxy nodes: Clash type http/https and http(s):// share links.
+http_link_file="$tmp_dir/node-http.link"
+printf '%s\n' 'http://fixture-user:fixture-password@http.invalid:8080#fixture-http' >"$http_link_file"
+http_json="$(magicnet_singbox_emit_share_link_json "$http_link_file")" \
+    || fail "emit_share_link_json failed for http://"
+printf '%s\n' "$http_json" | jq -e '
+  .type == "http"
+  and .tag == "fixture-http"
+  and .server == "http.invalid"
+  and .server_port == 8080
+  and .username == "fixture-user"
+  and .password == "fixture-password"
+  and (has("tls") | not)
+' >/dev/null || fail "http share-link JSON did not match expected shape: $http_json"
+
+https_link_file="$tmp_dir/node-https.link"
+printf '%s\n' 'https://edge%40user:edge%3Apassword@https.invalid:8443?sni=edge.example&insecure=1#fixture-https' >"$https_link_file"
+https_json="$(magicnet_singbox_emit_share_link_json "$https_link_file")" \
+    || fail "emit_share_link_json failed for https://"
+printf '%s\n' "$https_json" | jq -e '
+  .type == "http"
+  and .tag == "fixture-https"
+  and .server == "https.invalid"
+  and .server_port == 8443
+  and .username == "edge@user"
+  and .password == "edge:password"
+  and .tls.enabled == true
+  and .tls.server_name == "edge.example"
+  and .tls.insecure == true
+' >/dev/null || fail "https share-link JSON did not match expected shape: $https_json"
+
+http_unauth_file="$tmp_dir/node-http-unauth.link"
+printf '%s\n' 'http://http-unauth.invalid:3128#fixture-http-unauth' >"$http_unauth_file"
+http_unauth_json="$(magicnet_singbox_emit_share_link_json "$http_unauth_file")" \
+    || fail "emit_share_link_json failed for unauthenticated http://"
+printf '%s\n' "$http_unauth_json" | jq -e '
+  .type == "http"
+  and .server_port == 3128
+  and (has("username") | not)
+  and (has("password") | not)
+  and (has("tls") | not)
+' >/dev/null || fail "unauthenticated http:// emitted unexpected fields: $http_unauth_json"
+
+http_half_credentials_file="$tmp_dir/node-http-half-credentials.link"
+printf '%s\n' 'http://only-user@http.invalid:8080#fixture-http-half' >"$http_half_credentials_file"
+if magicnet_singbox_emit_share_link_json "$http_half_credentials_file" >"$tmp_dir/http-half-credentials.json"; then
+    fail "http:// with a username but no password was accepted"
+fi
+
+http_malformed_percent_file="$tmp_dir/node-http-malformed-percent.link"
+printf '%s\n' 'http://user%ZZ:password@http.invalid:8080#fixture-http-malformed-percent' >"$http_malformed_percent_file"
+if magicnet_singbox_emit_share_link_json "$http_malformed_percent_file" >"$tmp_dir/http-malformed-percent.json"; then
+    fail "malformed percent-encoded http:// credentials were accepted"
+fi
+
+http_no_port_file="$tmp_dir/node-http-no-port.link"
+printf '%s\n' 'http://http.invalid/path#fixture-http-no-port' >"$http_no_port_file"
+if magicnet_singbox_emit_share_link_json "$http_no_port_file" >"$tmp_dir/http-no-port.json"; then
+    fail "http:// without an explicit port was accepted"
+fi
+
+http_yaml_file="$tmp_dir/node-http.yaml"
+cat >"$http_yaml_file" <<'YAML'
+name: clash-http
+type: http
+server: clash-http.invalid
+port: 7890
+username: clash-user
+password: clash-secret
+YAML
+http_yaml_json="$(magicnet_singbox_emit_node_json "$http_yaml_file")" \
+    || fail "emit_node_json failed for Clash http"
+printf '%s\n' "$http_yaml_json" | jq -e '
+  .type == "http"
+  and .tag == "clash-http"
+  and .server == "clash-http.invalid"
+  and .server_port == 7890
+  and .username == "clash-user"
+  and .password == "clash-secret"
+  and (has("tls") | not)
+' >/dev/null || fail "Clash http JSON did not match expected shape: $http_yaml_json"
+
+http_tls_yaml_file="$tmp_dir/node-http-tls.yaml"
+cat >"$http_tls_yaml_file" <<'YAML'
+name: clash-http-tls
+type: http
+server: clash-http-tls.invalid
+port: 8443
+sni: clash-http-tls.example
+skip-cert-verify: true
+tls: true
+YAML
+http_tls_yaml_json="$(magicnet_singbox_emit_node_json "$http_tls_yaml_file")" \
+    || fail "emit_node_json failed for Clash http with tls"
+printf '%s\n' "$http_tls_yaml_json" | jq -e '
+  .type == "http"
+  and .server_port == 8443
+  and (has("username") | not)
+  and .tls.enabled == true
+  and .tls.server_name == "clash-http-tls.example"
+  and .tls.insecure == true
+' >/dev/null || fail "Clash http tls JSON did not match expected shape: $http_tls_yaml_json"
+
+http_yaml_half_credentials="$tmp_dir/node-http-half.yaml"
+cat >"$http_yaml_half_credentials" <<'YAML'
+name: clash-http-half
+type: http
+server: clash-http-half.invalid
+port: 7890
+username: clash-user
+YAML
+if magicnet_singbox_emit_node_json "$http_yaml_half_credentials" >"$tmp_dir/clash-http-half.json"; then
+    fail "Clash http node with a username but no password was accepted"
+fi
+
 trojan_link_file="$tmp_dir/node-trojan.link"
 printf '%s\n' 'trojan://fixture%40+password@trojan.invalid:443?sni=trojan%2Eexample&allowInsecure=1&alpn=h2#fixture-trojan' \
     >"$trojan_link_file"
@@ -413,7 +529,7 @@ printf '%s\n' "$tuic_yaml_json" | jq -e '
 
 # Mixed outbounds from native emitters land in proxy selector.
 nodes_json="$tmp_dir/outbounds.json"
-jq -n --argjson anytls "$anytls_json" --argjson tuic "$tuic_json" --argjson socks "$socks_json" '
+jq -n --argjson anytls "$anytls_json" --argjson tuic "$tuic_json" --argjson socks "$socks_json" --argjson http "$http_json" '
 [
   {
     "type": "vless",
@@ -424,12 +540,13 @@ jq -n --argjson anytls "$anytls_json" --argjson tuic "$tuic_json" --argjson sock
   },
   $anytls,
   $tuic,
-  $socks
+  $socks,
+  $http
 ]
 ' >"$nodes_json"
 
 valid_count="$(magicnet_singbox_count_valid_outbounds_nodes "$nodes_json")"
-[[ "$valid_count" == "4" ]] || fail "valid outbound count was $valid_count, expected 4"
+[[ "$valid_count" == "5" ]] || fail "valid outbound count was $valid_count, expected 5"
 
 invalid_socks_nodes="$tmp_dir/invalid-socks-nodes.json"
 jq -n '[
@@ -459,16 +576,18 @@ jq -n --slurpfile generated_outbounds "$outbounds_array" \
     '{outbounds: $generated_outbounds[0]}' >"$tmp_dir/generated-outbounds.json"
 
 jq -e '
-  ([.outbounds[] | select(.type == "vless" or .type == "anytls" or .type == "tuic" or .type == "socks")] | length) == 4
+  ([.outbounds[] | select(.type == "vless" or .type == "anytls" or .type == "tuic" or .type == "socks" or .type == "http")] | length) == 5
   and ([.outbounds[] | select(.type == "vless") | .tag] == ["fixture-vless"])
   and ([.outbounds[] | select(.type == "anytls") | .tag] == ["fixture-anytls"])
   and ([.outbounds[] | select(.type == "tuic") | .tag] == ["fixture-tuic"])
   and ([.outbounds[] | select(.type == "socks") | .tag] == ["fixture socks"])
+  and ([.outbounds[] | select(.type == "http") | .tag] == ["fixture-http"])
   and ((.outbounds[] | select(.type == "selector" and .tag == "proxy") | .outbounds) as $proxy
     | ($proxy | index("fixture-vless")) != null
     and ($proxy | index("fixture-anytls")) != null
     and ($proxy | index("fixture-tuic")) != null
-    and ($proxy | index("fixture socks")) != null)
+    and ($proxy | index("fixture socks")) != null
+    and ($proxy | index("fixture-http")) != null)
 ' "$tmp_dir/generated-outbounds.json" >/dev/null \
     || fail "generated outbounds did not preserve all protocols in the proxy selector"
 

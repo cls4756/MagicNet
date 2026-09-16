@@ -39,6 +39,7 @@ mod diagnostics;
 mod diagnostics_dns;
 mod diagnostics_routing;
 mod dns;
+mod domain_forward;
 mod ebpf_runtime;
 mod ecapture;
 mod machine;

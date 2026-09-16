@@ -232,6 +232,7 @@ magicnet_singbox_apply_transparent_mode() {
     rm -f "$_pairs" 2>/dev/null || true
     import __singbox__
     singbox_prepare_route_config "$_config" || true
+    magicnet_singbox_apply_domain_forward "$_config" || true
     unset _config _mode _dns_strategy _tun_mtu _udp_timeout _jq _tmp _pairs _interfaces_json _sources_json _mode_state_dir _mode_state_tmp _current_inbound _current_type _saved_file _saved_inbound
 }
 

@@ -1179,7 +1179,7 @@ fi
     ] as $services
     | [.outbounds[]
         | select(.type == "shadowsocks" or .type == "vmess" or .type == "vless" or .type == "trojan"
-            or .type == "hysteria2" or .type == "anytls" or .type == "tuic")
+            or .type == "hysteria2" or .type == "anytls" or .type == "tuic" or .type == "http")
         | .tag] as $node_tags
     | (.outbounds | INDEX(.tag)) as $by_tag
     | [.outbounds[] | select(.tag == "proxy-auto")] as $proxy_auto

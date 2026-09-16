@@ -1,0 +1,124 @@
+MagicNet fork patch: let sniffing hand the domain name to the outbound.
+
+Why this has to live in the fork
+--------------------------------
+MagicNet's transparent inbounds (tun and ebpf, both tagged `tun-in`) only see
+packets addressed to an IP address. sing-box sniffing records the TLS SNI or
+HTTP Host in `metadata.Domain`, which route rules can match on, but
+`ConnectionManager.NewConnection` always dials `metadata.Destination`. That is
+the resolved IP, so a proxy node never learns which domain the app wanted and
+cannot do its own domain based split routing.
+
+sing-box used to expose `override_destination` on the sniff action for exactly
+this. `RouteActionSniff` and `RuleActionSniff` still carry the field, the three
+call sites in `route/route.go` still honour it, but 1.14 dropped it from the
+JSON schema, so the field can never be set from a config file and the runtime
+check is dead code.
+
+This patch reintroduces the option and keeps UDP working:
+
+* `option/rule_action.go` accepts `override_destination` again.
+* `route/rule/rule_action.go` passes it through to the runtime action.
+* `route/route.go` remembers the packet destination in
+  `metadata.RouteOriginalDestination` before replacing it with the domain.
+  Without that the NAT rewrite for packet (UDP/QUIC) connections has no origin
+  address to restore and replies would come back from the node's own egress
+  address.
+* `route/conn.go` retries once with the remembered destination when a domain
+  dial fails, so a node that cannot resolve a sniffed name degrades to the
+  previous IP based behaviour instead of failing the connection.
+
+MagicNet only ever emits the option on a TCP scoped sniff rule, and only when
+the running core advertises the capability, so UDP keeps its current path.
+
+Apply with `scripts/apply-sing-box-patches.sh`, then commit the result in the
+fork and bump the `sing-box` gitlink. The module build refuses a dirty
+submodule on purpose, so the patch must not stay uncommitted.
+diff --git a/option/rule_action.go b/option/rule_action.go
+index ae05200..0f0f8b7 100644
+--- a/option/rule_action.go
++++ b/option/rule_action.go
+@@ -323,8 +323,9 @@ func (r *RejectActionOptions) UnmarshalJSON(bytes []byte) error {
+ }
+ 
+ type RouteActionSniff struct {
+-	Sniffer badoption.Listable[string] `json:"sniffer,omitempty" enum:"tls,http,quic,dns,stun,bittorrent,dtls,ssh,rdp,ntp"`
+-	Timeout badoption.Duration         `json:"timeout,omitempty"`
++	Sniffer             badoption.Listable[string] `json:"sniffer,omitempty" enum:"tls,http,quic,dns,stun,bittorrent,dtls,ssh,rdp,ntp"`
++	Timeout             badoption.Duration         `json:"timeout,omitempty"`
++	OverrideDestination bool                       `json:"override_destination,omitempty"`
+ }
+ 
+ type RouteActionResolve struct {
+diff --git a/route/conn.go b/route/conn.go
+index 076b289..e5c4ae5 100644
+--- a/route/conn.go
++++ b/route/conn.go
+@@ -107,6 +107,17 @@ func (m *ConnectionManager) NewConnection(ctx context.Context, this N.Dialer, co
+ 	} else {
+ 		remoteConn, err = this.DialContext(ctx, N.NetworkTCP, metadata.Destination)
+ 	}
++	if err != nil && !metadata.Destination.IsIP() &&
++		metadata.RouteOriginalDestination.IsValid() && metadata.RouteOriginalDestination != metadata.Destination {
++		// MagicNet: the sniffed domain could not be used, for example because the
++		// upstream cannot resolve it. Retry once with the original destination so
++		// the connection still works the way it did before the domain override.
++		var fallbackErr error
++		remoteConn, fallbackErr = this.DialContext(ctx, N.NetworkTCP, metadata.RouteOriginalDestination)
++		if fallbackErr == nil {
++			err = nil
++		}
++	}
+ 	if err != nil {
+ 		var remoteString string
+ 		if len(metadata.DestinationAddresses) > 0 {
+diff --git a/route/route.go b/route/route.go
+index aee95ea..92611e6 100644
+--- a/route/route.go
++++ b/route/route.go
+@@ -364,6 +364,9 @@ func (r *Router) PreMatch(metadata adapter.InboundContext, firstPacket []byte) a
+ 			}
+ 			//goland:noinspection GoDeprecation
+ 			if action.OverrideDestination && M.IsDomainName(metadata.Domain) {
++				if !metadata.RouteOriginalDestination.IsValid() {
++					metadata.RouteOriginalDestination = metadata.Destination
++				}
+ 				metadata.Destination = M.Socksaddr{
+ 					Fqdn: metadata.Domain,
+ 					Port: metadata.Destination.Port,
+@@ -748,6 +751,9 @@ func (r *Router) actionSniff(
+ 		if err == nil {
+ 			//goland:noinspection GoDeprecation
+ 			if action.OverrideDestination && M.IsDomainName(metadata.Domain) {
++				if !metadata.RouteOriginalDestination.IsValid() {
++					metadata.RouteOriginalDestination = metadata.Destination
++				}
+ 				metadata.Destination = M.Socksaddr{
+ 					Fqdn: metadata.Domain,
+ 					Port: metadata.Destination.Port,
+@@ -872,6 +878,9 @@ func (r *Router) actionSniff(
+ 		if err == nil {
+ 			//goland:noinspection GoDeprecation
+ 			if action.OverrideDestination && M.IsDomainName(metadata.Domain) {
++				if !metadata.RouteOriginalDestination.IsValid() {
++					metadata.RouteOriginalDestination = metadata.Destination
++				}
+ 				metadata.Destination = M.Socksaddr{
+ 					Fqdn: metadata.Domain,
+ 					Port: metadata.Destination.Port,
+diff --git a/route/rule/rule_action.go b/route/rule/rule_action.go
+index cb65611..b5d6638 100644
+--- a/route/rule/rule_action.go
++++ b/route/rule/rule_action.go
+@@ -105,8 +105,9 @@ func NewRuleAction(ctx context.Context, logger logger.ContextLogger, action opti
+ 		return &RuleActionHijackDNS{}, nil
+ 	case C.RuleActionTypeSniff:
+ 		sniffAction := &RuleActionSniff{
+-			SnifferNames: action.SniffOptions.Sniffer,
+-			Timeout:      time.Duration(action.SniffOptions.Timeout),
++			SnifferNames:        action.SniffOptions.Sniffer,
++			Timeout:             time.Duration(action.SniffOptions.Timeout),
++			OverrideDestination: action.SniffOptions.OverrideDestination,
+ 		}
+ 		return sniffAction, sniffAction.build()
+ 	case C.RuleActionTypeResolve:

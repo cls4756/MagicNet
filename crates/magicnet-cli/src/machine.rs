@@ -35,6 +35,7 @@ const MACHINE_COMMANDS: &[&str] = &[
     "transparent.status",
     "dns.status",
     "network.status",
+    "domain-forward.status",
     "sub.status",
     "sub.inspect",
     "wifi.status",
@@ -89,6 +90,9 @@ fn machine_value(app: &App, command: &[&str]) -> Result<Value, MachineError> {
         [command, action] if *command == "dns" && *action == "status" => Ok(dns_status_value(app)),
         [command, action] if *command == "network" && *action == "status" => {
             Ok(network_status_value(app))
+        }
+        [command, action] if *command == "domain-forward" && *action == "status" => {
+            Ok(domain_forward_status_value(app))
         }
         [command, action] if *command == "sub" && *action == "status" => Ok(sub_status_value(app)),
         [command, action] if *command == "sub" && *action == "inspect" => {
@@ -326,6 +330,21 @@ fn network_status_value(app: &App) -> Value {
                 "mtu": effective_mtu,
                 "udp_timeout": effective_udp_timeout,
             }
+        }),
+    )
+}
+
+/// Reports the three layers separately. An enabled toggle on a core without the
+/// fork patch must read as `effective: "unsupported"`, never as success.
+fn domain_forward_status_value(app: &App) -> Value {
+    let status = crate::domain_forward::snapshot(app);
+    envelope(
+        "domain-forward.status",
+        json!({
+            "configured": status.configured,
+            "core_support": status.core_support,
+            "effective": status.effective,
+            "tcp_rule": status.tcp_rule,
         }),
     )
 }

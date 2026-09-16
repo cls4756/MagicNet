@@ -11,4 +11,8 @@ export default {
     "UDP / IPv6 policy status returned an invalid response",
     "Статус политики UDP / IPv6 вернул некорректный ответ",
   ],
+  "读取域名转发状态返回了无效状态": [
+    "Domain forwarding status returned an invalid response",
+    "Статус переадресации доменов вернул некорректный ответ",
+  ],
 } as const;

@@ -28,6 +28,23 @@ Installer download: `https://github.com/LIghtJUNction/MagicNet/releases/latest/d
 
 ## Unreleased
 
+- Add HTTP/HTTPS proxy nodes to the native subscription parser (share links and
+  Clash `type: http`), including paired credentials and optional TLS.
+- Forward the sniffed domain to outbounds so a proxy node can route by domain,
+  controlled by a default-on switch (`cli domain-forward`, WebUI tools page).
+  The override is TCP-only; UDP keeps the IP path. An enabled switch on a core
+  without the fork option reports `configured=enabled`/`effective=unsupported`
+  instead of writing a key the core would reject.
+- Land the required core change as `sing-box-patches/` plus
+  `scripts/apply-sing-box-patches.sh`. When a domain-based dial fails, the fork
+  retries once with the original IP address and keeps the original return path.
+- Project domain-forwarding intent, core capability and materialized state into
+  `domain-forward.state`, and expose `cli --json domain-forward status`.
+- Show installed app names and icons in the WebUI app policy list: rows and
+  already-selected entries label the package through the KernelSU package API,
+  icons come from `ksu://icon/<package>`, and the search box matches app names
+  as well as package names. Managers without the package API keep the previous
+  package-name-only view instead of inventing labels.
 - Visualize Proxy, Direct, and Bypass app traffic paths in the WebUI, including
   DNS boundaries, before/after confirmation details, automatic activation, and
   an advanced action to re-resolve Android UIDs after package or user changes.

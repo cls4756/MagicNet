@@ -12,6 +12,7 @@ import { useMagicNet } from "@/composables/useMagicNet";
 import { copyText, execFailed, readClipboardText, redactedCliPreview } from "@/utils";
 import ToolActionConfirmCard from "./ToolActionConfirmCard.vue";
 import DnsToolsCard from "./DnsToolsCard.vue";
+import DomainForwardCard from "./DomainForwardCard.vue";
 import EcaptureToolsCard from "./EcaptureToolsCard.vue";
 import McpToolsCard from "./McpToolsCard.vue";
 import NetworkPolicyCard from "./NetworkPolicyCard.vue";
@@ -29,6 +30,7 @@ const {
   stagePrivatePayload,
   removePrivatePayload,
   refreshDns,
+  refreshDomainForward,
   refreshMcp,
   refreshTopology,
   refreshSysroute,
@@ -53,6 +55,7 @@ async function refreshTools(): Promise<void> {
       { label: "DNS", ok: await refreshDns(true, redactedCliPreview("refresh tools [private-output]")) },
       { label: "WARP", ok: await refreshWarp(true) },
       { label: "MCP", ok: await refreshMcp(true) },
+      { label: t("域名转发"), ok: (await refreshDomainForward(true)) !== null },
     ] as const;
     const summary = summarizeRefreshTools(steps, state.output);
     state.notice = summary.notice;
@@ -342,6 +345,8 @@ function selectWarpGlobal(enabled: boolean): void {
       <NetworkPolicyCard />
 
       <DnsToolsCard />
+
+      <DomainForwardCard />
 
       <Card class="grid gap-3">
         <h3 class="inline-flex items-center gap-2 text-base font-semibold"><Network :size="17" /> {{ t("WARP 出站") }}</h3>

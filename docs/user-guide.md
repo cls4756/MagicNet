@@ -50,7 +50,7 @@ WebUI 的“导入本地文件”支持完整 sing-box JSON、Clash YAML、base6
 
 导入成功后，本地文件成为持久来源；后续刷新继续使用它。保存新 URL 会原子切回 URL 来源。导入或切换失败时，WebUI 会报告失败阶段，当前有效配置继续运行，不应手工覆盖 `.config/sing-box/config.json` 来绕过校验。
 
-原生分享链接覆盖 VLESS、VMess、Trojan、Shadowsocks、SOCKS/SOCKS5、Hysteria2、AnyTLS 和 TUIC。VMess WebSocket 会分别保留服务器地址、Host、SNI 与 path；SOCKS 认证要求用户名和密码同时有效。
+原生分享链接覆盖 VLESS、VMess、Trojan、Shadowsocks、SOCKS/SOCKS5、HTTP/HTTPS、Hysteria2、AnyTLS 和 TUIC。VMess WebSocket 会分别保留服务器地址、Host、SNI 与 path；HTTP 和 SOCKS 认证都要求用户名和密码同时有效，`https://` 或 Clash `type: http` 加 `tls: true` 会生成带 TLS 的 HTTP 出站。
 
 ## 节点测试与自动组
 
@@ -64,6 +64,28 @@ su -c /data/adb/modules/MagicNet/cli node current
 ```
 
 WebUI 可查看延迟、手动选择节点或切回自动组。选择结果会持久化；订阅更新后不存在的节点会被安全重建为有效候选。
+
+## 域名转发（节点按域名分流）
+
+透明代理下应用发出的是 IP 数据包，MagicNet 通过嗅探恢复域名。默认开启的域名转发会把嗅探结果交给出站，让节点按域名自行分流；关闭后出站只使用 IP，节点只能按 IP 处理。
+
+```bash
+su -c /data/adb/modules/MagicNet/cli domain-forward status
+su -c /data/adb/modules/MagicNet/cli domain-forward disable
+su -c /data/adb/modules/MagicNet/cli domain-forward enable
+```
+
+WebUI 的“工具”页提供同一个开关，默认打开。状态分三层：
+
+- `configured`：你的选择，缺省即 `enabled`。
+- `core_support`：当前 `bin/sing-box` 是否带域名覆写能力。该能力来自 `sing-box-patches/` 里的 fork 补丁，需要更新内核后才会变成 `available`。
+- `effective`：运行配置里是否真的带上了覆写规则。`unsupported` 表示内核不支持，`pending` 表示已保存但尚未物化。
+
+约束与行为：
+
+- 只作用于 TCP。UDP/QUIC 仍按 IP 转发，不做域名覆写。
+- 内核不支持时不会把未知字段写进运行配置，避免旧内核启动失败；开关保持 `configured=enabled`，`effective=unsupported`。
+- 域名不可信（连错或 TLS 失败）时，内核会用原始 IP 重试一次；重试成功后仍按原连接返回。重试仍失败则照常报错。
 
 ## 应用策略
 
@@ -81,6 +103,8 @@ su -c /data/adb/modules/MagicNet/cli app list
 ```
 
 应用重装、工作资料用户新增或包 UID 变化后，执行 `cli app apply` 或在 WebUI 重新应用策略，使 UID 列表按当前用户重新解析。
+
+WebUI 的应用列表显示应用名称（来自管理器的包信息接口）；能提供应用图标的 KernelSU 管理器会直接显示图标，其余情况退化为包名首字母，名称始终回退到包名。搜索框同时匹配应用名称和包名，因此可以按“微信”这类名称直接过滤。`cli app packages` 只按包名过滤，缺少包信息接口时会退回到该路径。
 
 ## Wi-Fi SSID/BSSID 策略
 

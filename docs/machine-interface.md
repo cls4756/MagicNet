@@ -53,6 +53,7 @@ supervisor.status
 transparent.status
 dns.status
 network.status
+domain-forward.status
 sub.status
 wifi.status
 machine.capabilities
@@ -65,6 +66,7 @@ Examples:
 /data/adb/modules/MagicNet/cli --json transparent status
 /data/adb/modules/MagicNet/cli --json dns status
 /data/adb/modules/MagicNet/cli --json network status
+/data/adb/modules/MagicNet/cli --json domain-forward status
 /data/adb/modules/MagicNet/cli --json sub status
 /data/adb/modules/MagicNet/cli --json wifi status
 ```
@@ -92,6 +94,8 @@ not_ready
 running_unknown
 ```
 
+`domain-forward.status` keeps user intent, core capability and materialized state apart. `effective` is `enabled` only when the active sing-box configuration carries the TCP destination-override rule; an enabled toggle on a core without the fork patch reports `unsupported`, and an enabled toggle that has not been materialized yet reports `pending`. The feature is TCP-only, so no UDP coverage is ever claimed.
+
 For TUN, dataplane readiness requires the configured TUN interface to exist in sysfs. For eBPF, MagicNet refreshes the active-program report and reuses the kernel attachment inspector to verify required cgroup/TC attachments. `transparent.status` exposes the normalized result without returning interface names or other unnecessary network identifiers.
 
 ## Privacy boundary
@@ -105,6 +109,7 @@ Examples already enforced in schema 1:
 - Subscription status reports source type, configured count, update/transaction state, lifecycle counters and whether a reason exists; it does not expose the URL or reason text.
 - Wi-Fi status reports connection/match state and list counts; it does not expose SSID or BSSID text.
 - Network status separates `configured` policy from the values materialized in the effective sing-box configuration.
+- Domain-forwarding status reports `configured`, `core_support` and `effective` tokens plus a boolean rule flag; it never returns sniffed domains, rule contents or core paths.
 - Service PID inspection distinguishes `running`, `stopped` and `unknown`; an inspection failure is not treated as a running service.
 - Transparent status reports attachment states and interface counts, not shared-interface names.
 

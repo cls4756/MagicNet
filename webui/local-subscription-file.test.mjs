@@ -19,6 +19,13 @@ assert.equal(
   "proxies:\n  - name: redacted\n    type: vless\n    server: example.invalid\n",
 );
 
+for (const scheme of ["http", "https", "socks", "socks5", "tuic", "anytls", "hy2"]) {
+  const link = parseLocalSubscriptionFile(
+    "links.txt",
+    encoder.encode(`${scheme}://example.invalid:443#node\n`),
+  );
+  assert.equal(link.format, "share-links", `${scheme} share links must be recognized`);
+}
 const encoded = parseLocalSubscriptionFile("nodes.txt", encoder.encode("dmxlc3M6Ly9leGFtcGxl\n"));
 assert.equal(encoded.format, "encoded");
 

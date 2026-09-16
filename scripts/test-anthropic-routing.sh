@@ -71,7 +71,7 @@ jq -e '
   ] as $services
   | [.outbounds[]
       | select(.type == "shadowsocks" or .type == "vmess" or .type == "vless" or .type == "trojan"
-          or .type == "hysteria2" or .type == "anytls" or .type == "tuic")
+          or .type == "hysteria2" or .type == "anytls" or .type == "tuic" or .type == "http")
       | .tag] as $node_tags
   | (.outbounds | INDEX(.tag)) as $by_tag
   | [.outbounds[] | select(.tag == "proxy-auto")] as $proxy_auto
@@ -145,7 +145,7 @@ write_outbounds_config "$tmp_dir/adversarial-jq.fragment" "$tmp_dir/adversarial-
 jq -e '
   [.outbounds[]
     | select(.type == "shadowsocks" or .type == "vmess" or .type == "vless" or .type == "trojan"
-        or .type == "hysteria2" or .type == "anytls" or .type == "tuic")
+        or .type == "hysteria2" or .type == "anytls" or .type == "tuic" or .type == "http")
     | .tag] as $node_tags
   | (.outbounds | INDEX(.tag)) as $by_tag
   | $node_tags == ["node-x", "node space"]
@@ -201,7 +201,7 @@ jq '.outbounds += [(.outbounds[]
   "$tmp_dir/generated.json" >"$tmp_dir/duplicate-proxy-node.json"
 jq '[.outbounds[]
       | select(.type == "shadowsocks" or .type == "vmess" or .type == "vless" or .type == "trojan"
-          or .type == "hysteria2" or .type == "anytls" or .type == "tuic")
+          or .type == "hysteria2" or .type == "anytls" or .type == "tuic" or .type == "http")
       | .tag]
     | reduce .[] as $tag ([]; if index($tag) == null then . + [$tag] else . end)' \
   "$tmp_dir/duplicate-proxy-node.json" >"$tmp_dir/expected-unique-node-tags.json"
@@ -212,7 +212,7 @@ magicnet_singbox_sanitize_generated_config "$tmp_dir/repaired-duplicate-proxy-no
 jq -e --slurpfile expected "$tmp_dir/expected-unique-node-tags.json" '
   [.outbounds[]
     | select(.type == "shadowsocks" or .type == "vmess" or .type == "vless" or .type == "trojan"
-        or .type == "hysteria2" or .type == "anytls" or .type == "tuic")
+        or .type == "hysteria2" or .type == "anytls" or .type == "tuic" or .type == "http")
     | .tag] as $node_tags
   | (.outbounds | INDEX(.tag)) as $by_tag
   | $node_tags == $expected[0]
@@ -300,7 +300,7 @@ write_outbounds_config "$tmp_dir/adversarial-endpoint.fragment" "$tmp_dir/advers
 jq -e '
   [.outbounds[]
     | select(.type == "shadowsocks" or .type == "vmess" or .type == "vless" or .type == "trojan"
-        or .type == "hysteria2" or .type == "anytls" or .type == "tuic")
+        or .type == "hysteria2" or .type == "anytls" or .type == "tuic" or .type == "http")
     | .tag] == ["valid-endpoint"]
 ' "$tmp_dir/adversarial-endpoint.json" >/dev/null ||
   fail "jq generator emitted malformed endpoint or type-specific nodes"
@@ -319,7 +319,7 @@ write_outbounds_config "$tmp_dir/adversarial-all.fragment" "$tmp_dir/adversarial
 jq -e '
   [.outbounds[]
     | select(.type == "shadowsocks" or .type == "vmess" or .type == "vless" or .type == "trojan"
-        or .type == "hysteria2" or .type == "anytls" or .type == "tuic")
+        or .type == "hysteria2" or .type == "anytls" or .type == "tuic" or .type == "http")
     | .tag] == [
       "schema-ss", "schema-vmess", "schema-vless", "schema-trojan",
       "schema-hysteria2", "schema-anytls", "schema-tuic", "valid-endpoint"
@@ -336,7 +336,7 @@ magicnet_singbox_sanitize_generated_config "$tmp_dir/sanitizer-adversarial.json"
 jq -e '
   [.outbounds[]
     | select(.type == "shadowsocks" or .type == "vmess" or .type == "vless" or .type == "trojan"
-        or .type == "hysteria2" or .type == "anytls" or .type == "tuic")
+        or .type == "hysteria2" or .type == "anytls" or .type == "tuic" or .type == "http")
     | .tag] == [
       "schema-ss", "schema-vmess", "schema-vless", "schema-trojan",
       "schema-hysteria2", "schema-anytls", "schema-tuic", "valid-endpoint"
@@ -509,7 +509,7 @@ magicnet_singbox_sanitize_generated_config "$tmp_dir/stale-proxy-auto-tolerance.
 jq -e '
   [.outbounds[]
     | select(.type == "shadowsocks" or .type == "vmess" or .type == "vless" or .type == "trojan"
-        or .type == "hysteria2" or .type == "anytls" or .type == "tuic")
+        or .type == "hysteria2" or .type == "anytls" or .type == "tuic" or .type == "http")
     | .tag] as $node_tags
   | (.outbounds | INDEX(.tag)) as $by_tag
   | ([.outbounds[] | select(.tag == "proxy-auto")] == [{

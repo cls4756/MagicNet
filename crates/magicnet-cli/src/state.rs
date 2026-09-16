@@ -59,6 +59,10 @@ enum Domain {
     Wifi,
     Hotspot,
     Dns,
+    // Mirrors the public state file name (`domain-forward.state`); renaming the
+    // variant would decouple the two.
+    #[allow(clippy::enum_variant_names)]
+    DomainForward,
     Mcp,
     Tailscale,
     Transactions,
@@ -77,6 +81,7 @@ impl Domain {
             Self::Wifi => "wifi",
             Self::Hotspot => "hotspot",
             Self::Dns => "dns",
+            Self::DomainForward => "domain-forward",
             Self::Mcp => "mcp",
             Self::Tailscale => "tailscale",
             Self::Transactions => "transactions",
@@ -162,6 +167,7 @@ pub(crate) fn reconcile(app: &App) -> Result<(), String> {
         ),
         (Domain::Hotspot, hotspot_record(app)),
         (Domain::Dns, dns_record(app)),
+        (Domain::DomainForward, domain_forward_record(app)),
         (Domain::Mcp, mcp_record(app)),
         (Domain::Tailscale, tailscale_record(app, config.as_ref())),
         (Domain::Transactions, transactions_record(app)),
@@ -695,6 +701,15 @@ fn dns_record(app: &App) -> StateRecord {
     StateRecord::new(Domain::Dns)
         .field("state", if interface_count > 0 { "owned" } else { "idle" })
         .field("guard_interface_count", interface_count.to_string())
+}
+
+fn domain_forward_record(app: &App) -> StateRecord {
+    let status = crate::domain_forward::snapshot(app);
+    StateRecord::new(Domain::DomainForward)
+        .field("state", status.effective)
+        .field("configured", status.configured)
+        .field("core_support", status.core_support)
+        .bool("tcp_rule", status.tcp_rule)
 }
 
 fn mcp_record(app: &App) -> StateRecord {

@@ -247,6 +247,7 @@ magicnet_apply_runtime_config_unlocked() {
     # the configuration used by the running core.
     import __singbox__ &&
         singbox_prepare_route_config "$(magicnet_singbox_config_file)" || _runtime_rc=1
+    magicnet_singbox_apply_domain_forward "$(magicnet_singbox_config_file)" || _runtime_rc=1
     magicnet_wifi_policy_start || _runtime_rc=1
     if magicnet_kernel_running; then
         magicnet_enable_dns_capture || _runtime_rc=1

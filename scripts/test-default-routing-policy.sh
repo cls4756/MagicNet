@@ -1216,7 +1216,7 @@ def recursively_effective_outbound(tag):
         current = default
 
 
-proxy_node_types = {"shadowsocks", "vmess", "vless", "trojan", "hysteria2", "anytls", "tuic", "socks"}
+proxy_node_types = {"shadowsocks", "vmess", "vless", "trojan", "hysteria2", "anytls", "tuic", "socks", "http"}
 base_proxy_nodes = [
     outbound for outbound in outbound_list if outbound.get("type") in proxy_node_types
 ]

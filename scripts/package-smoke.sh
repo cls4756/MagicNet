@@ -900,7 +900,7 @@ def assert_packaged_connectivity_dns_safety(domestic_index, foreign_index, leak_
                 f"rule index {canonical_index}"
             )
 
-proxy_node_types = {"shadowsocks", "vmess", "vless", "trojan", "hysteria2", "anytls", "tuic", "socks"}
+proxy_node_types = {"shadowsocks", "vmess", "vless", "trojan", "hysteria2", "anytls", "tuic", "socks", "http"}
 base_proxy_nodes = [
     outbound for outbound in config.get("outbounds", []) if outbound.get("type") in proxy_node_types
 ]

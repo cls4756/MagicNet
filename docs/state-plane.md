@@ -91,6 +91,7 @@ The repository's durable runtime files fall into three groups.
 | Wi-Fi config + `.state/wifi-policy/last-state.conf` | `wifi.state` | policy and last confirmed effective decision |
 | hotspot offload ownership + TUN route rule ownership | `hotspot.state` | disabled/waiting/active/shared state |
 | `.state/dns-leak-guard.ifaces` | `dns.state` | owned DNS guard interface count |
+| domain-forward config + active sing-box sniff rule + installed core capability | `domain-forward.state` | configured/enabled intent, core capability and whether the TCP destination override is materialized |
 | MCP config + `.state/magicnet-mcp.pid` | `mcp.state` | enabled/process/secret-presence state |
 | sing-box Tailscale endpoint config + auth-material presence | `tailscale.state` | endpoint cardinality/configuration state |
 | transparent/subscription/module-file transaction evidence | `transactions.state` | coarse transaction activity |

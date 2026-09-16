@@ -36,7 +36,7 @@ export function parseLocalSubscriptionFile(
   const text = source.endsWith("\n") ? source : `${source}\n`;
   const format = /^\s*proxies\s*:/m.test(source)
     ? "clash"
-    : /(?:^|\s)(?:ss|vmess|vless|trojan|hysteria2|hy2|tuic|anytls):\/\//m.test(source)
+    : /(?:^|\s)(?:ss|vmess|vless|trojan|hysteria2|hy2|tuic|anytls|socks|socks5|https?):\/\//m.test(source)
       ? "share-links"
       : /^\s*[A-Za-z0-9+/=_-]+\s*$/.test(source)
         ? "encoded"

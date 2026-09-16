@@ -957,7 +957,7 @@ magicnet_singbox_update_subscription_unlocked() {
     fi
 
     if [ "${_imported:-0}" -le 0 ]; then
-        error "No supported nodes imported. Supported natively: Clash/share-link ss, socks, vmess, vless, trojan, hysteria2, anytls, tuic. Proxylink remains an optional converter for other formats when present."
+        error "No supported nodes imported. Supported natively: Clash/share-link ss, socks, http, vmess, vless, trojan, hysteria2, anytls, tuic. Proxylink remains an optional converter for other formats when present."
         magicnet_singbox_update_status convert failed no_nodes_imported || true
         magicnet_singbox_update_cleanup_stage
         return 1

@@ -109,6 +109,10 @@ magicnet_singbox_build_outbounds_file_with_jq() (
                 and (((has("username") | not) and (has("password") | not))
                   or ((.username | type == "string" and length > 0)
                     and (.password | type == "string" and length > 0)))
+            elif .type == "http" then
+              (((has("username") | not) and (has("password") | not))
+                or ((.username | type == "string" and length > 0)
+                  and (.password | type == "string" and length > 0)))
             else false
             end);
       def with_base($outs; $fallback):
@@ -269,6 +273,10 @@ magicnet_singbox_count_valid_outbounds_nodes() {
                 and (((has("username") | not) and (has("password") | not))
                   or ((.username | type == "string" and length > 0)
                     and (.password | type == "string" and length > 0)))
+            elif .type == "http" then
+              (((has("username") | not) and (has("password") | not))
+                or ((.username | type == "string" and length > 0)
+                  and (.password | type == "string" and length > 0)))
             else false
             end);
       ($nodes[0] // []
@@ -300,7 +308,8 @@ magicnet_singbox_sanitize_generated_config() {
         "$_sanitize_jq" -L "$_sanitize_ai_lib" --rawfile configured_filters "$_sanitize_filter_file" -e 'include "ai-node-tags";
       def proxy_node_type:
         .type == "shadowsocks" or .type == "vmess" or .type == "vless" or .type == "trojan"
-          or .type == "hysteria2" or .type == "anytls" or .type == "tuic" or .type == "socks";
+          or .type == "hysteria2" or .type == "anytls" or .type == "tuic" or .type == "socks"
+          or .type == "http";
       def reserved_tag:
         . as $tag
         | [
@@ -335,6 +344,10 @@ magicnet_singbox_sanitize_generated_config() {
                 and (((has("username") | not) and (has("password") | not))
                   or ((.username | type == "string" and length > 0)
                     and (.password | type == "string" and length > 0)))
+            elif .type == "http" then
+              (((has("username") | not) and (has("password") | not))
+                or ((.username | type == "string" and length > 0)
+                  and (.password | type == "string" and length > 0)))
             else false
             end);
       def dedupe_proxy_nodes:
@@ -552,7 +565,7 @@ magicnet_singbox_replay_cached_outbounds() {
         unset _cached_outbounds
         return 1
     }
-    grep -Eq '"type"[[:space:]]*:[[:space:]]*"(vless|hysteria2|trojan|vmess|shadowsocks|anytls|tuic|socks)"' \
+    grep -Eq '"type"[[:space:]]*:[[:space:]]*"(vless|hysteria2|trojan|vmess|shadowsocks|anytls|tuic|socks|http)"' \
         "$_cached_outbounds" || {
         unset _cached_outbounds
         return 1

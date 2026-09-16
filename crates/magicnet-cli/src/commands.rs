@@ -2,6 +2,7 @@ use crate::chain::chain_cmd;
 use crate::config_editor::config_editor;
 use crate::diagnostics::{health, support, sysroute, topology};
 use crate::dns::dns_cmd;
+use crate::domain_forward::domain_forward_cmd;
 use crate::ecapture::ecapture_cmd;
 use crate::mcp::mcp;
 use crate::network::network_cmd;
@@ -71,6 +72,7 @@ const COMMANDS: &[CommandSpec] = commands! {
     "hotspot" => hotspot_cmd, "{status|enable|disable|reconcile}";
     "route" => route_cmd, "{list|add-domain <proxy|direct|block|warp> <domain-suffix>|remove-domain <proxy|direct|block|warp> <domain-suffix>|apply}";
     "dns" => dns_cmd, "{status|set <default|cloudflare-doh|cloudflare-dot|cloudflare-udp>|test [domain]|apply}";
+    "domain-forward" => domain_forward_cmd, "[status|enable|disable]";
     "warp" => warp_cmd, "{status|import-file <wireguard-conf-path>|enable|disable|global|rule|apply|test}";
     "sub" => subscription_command, "{update <sing-box|all>|update-all|status|schedule {status|set <off|12|24|48|72>}|user-agent {get|set <base64-value>|clear}|filter {list|set <base64-lines>|clear}|list|get sing-box|set sing-box <url>|set-file sing-box <base64-lines>|apply-file sing-box <base64-lines>|file [sing-box]}";
     "block" => block_cmd, "{list|enable|disable|community <on|off>|url <http-url>|update|add-domain <suffix>|remove-domain <suffix>|allow-rule <rule>|unallow-rule <rule>|diff|apply}";
@@ -112,8 +114,8 @@ pub(crate) fn needs_state_reconcile(args: &[String]) -> bool {
         ("health" | "topology" | "pingtest" | "speedtest", _) => false,
         ("service", "" | "status" | "logs") => false,
         (
-            "supervisor" | "transparent" | "network" | "core" | "chain" | "wifi" | "hotspot"
-            | "dns" | "warp",
+            "supervisor" | "transparent" | "network" | "domain-forward" | "core" | "chain" | "wifi"
+            | "hotspot" | "dns" | "warp",
             "" | "status",
         ) => false,
         ("core", "selected") => false,
@@ -299,6 +301,8 @@ mod tests {
             "health",
             "core selected",
             "network status",
+            "domain-forward",
+            "domain-forward status",
             "wifi status",
             "dns status",
             "transparent status",
@@ -336,6 +340,8 @@ mod tests {
             "config-editor save-file",
             "config-editor repo reset",
             "network set",
+            "domain-forward enable",
+            "domain-forward disable",
             "dns apply",
             "wifi check",
             "hotspot reconcile",

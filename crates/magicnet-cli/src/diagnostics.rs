@@ -1485,6 +1485,7 @@ fn loopback_proxy_servers(config: &Value) -> Vec<String> {
                     | "tuic"
                     | "anytls"
                     | "socks"
+                    | "http"
             ) {
                 return None;
             }
