@@ -170,10 +170,13 @@ pub(super) fn snapshot(app: &App, process_state: &str, configured_mode: &str) ->
     let dataplane_ready = match process_state {
         "stopped" => Some(false),
         "running" => attachments.as_ref().map(|evidence| {
-            let local_ready = !local_expected || evidence.local_attached;
-            let shared_ready =
-                !shared_expected || (!shared_interfaces.is_empty() && evidence.shared_attached);
-            capability == "ok" && local_ready && shared_ready
+            ebpf_dataplane_ready(
+                &capability,
+                local_expected,
+                shared_expected,
+                evidence.local_attached,
+                evidence.shared_attached,
+            )
         }),
         _ => None,
     };
@@ -190,6 +193,27 @@ pub(super) fn snapshot(app: &App, process_state: &str, configured_mode: &str) ->
         has_recent_error,
         dataplane_ready,
     }
+}
+
+/// Readiness of an eBPF dataplane from the probed capability plus the
+/// attachments the active configuration actually requires.
+///
+/// `shared` and `hybrid` wait for a confirmed downstream interface. While the
+/// generated configuration lists none, no TC attachment is required and
+/// `shared_tc` stays `pending`; the local cgroup path keeps serving traffic,
+/// so that normal operating state must not block readiness. The attachment
+/// inspector reports `shared_attached` for the configured interface list, which
+/// is vacuously true when there is none, and never true for unknown evidence.
+fn ebpf_dataplane_ready(
+    capability: &str,
+    local_expected: bool,
+    shared_expected: bool,
+    local_attached: bool,
+    shared_attached: bool,
+) -> bool {
+    let local_ready = !local_expected || local_attached;
+    let shared_ready = !shared_expected || shared_attached;
+    capability == "ok" && local_ready && shared_ready
 }
 
 fn tun_interface_ready(inbound: Option<&Value>) -> bool {
@@ -274,8 +298,25 @@ fn regular_file_nonempty(path: &Path) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{network_values, valid_interface_name};
+    use super::{ebpf_dataplane_ready, network_values, valid_interface_name};
     use serde_json::json;
+
+    #[test]
+    fn hybrid_ebpf_stays_ready_while_shared_tc_waits_for_a_downstream_interface() {
+        // No confirmed downstream interface: the inspector reports the empty
+        // interface list as attached, and the local cgroup path carries traffic.
+        assert!(ebpf_dataplane_ready("ok", true, true, true, true));
+        // A listed downstream interface without its TC attachment is not ready.
+        assert!(!ebpf_dataplane_ready("ok", true, true, true, false));
+        // Local-only and shared-only modes ignore the other data path.
+        assert!(ebpf_dataplane_ready("ok", true, false, true, false));
+        assert!(ebpf_dataplane_ready("ok", false, true, false, true));
+        assert!(!ebpf_dataplane_ready("ok", false, true, false, false));
+        // A missing capability or local attachment is never ready.
+        assert!(!ebpf_dataplane_ready("failed", true, true, true, true));
+        assert!(!ebpf_dataplane_ready("unknown", true, true, true, true));
+        assert!(!ebpf_dataplane_ready("ok", true, true, false, true));
+    }
 
     #[test]
     fn interface_names_cannot_escape_sysfs_or_expose_paths() {

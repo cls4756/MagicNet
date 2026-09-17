@@ -62,6 +62,11 @@ Installer download: `https://github.com/LIghtJUNction/MagicNet/releases/latest/d
 - Remove the in-repository MagicBox Android app, its submodule integration,
   App-only documentation, and policy-test coupling.
 - Keep eBPF in hybrid mode by default, preserving local cgroup interception while shared TC waits for a confirmed downstream interface.
+- Report eBPF `hybrid` as ready while shared TC still waits for a confirmed
+  downstream interface. Readiness demanded a non-empty shared interface list, so
+  the default eBPF configuration showed the service as not ready even though the
+  local cgroup path was attached and traffic was proxied. A configured downstream
+  interface without its TC attachment is still reported as not ready.
 - Fix Android supervisor discovery on OEM processes with malformed `/proc` cmdlines, bound all PID lookups by one deadline, and reclaim dead refresh metadata safely.
 - Preserve explicit TUN/eBPF managed inbound settings across mode switches and recover interrupted transparent journals before fswatch applies a config.
 - Add a configurable HTTPS Git repository for the sing-box config template, defaulting to a pinned `LIghtJUNction/MagicSingBox` commit and digest with atomic validation and rollback.

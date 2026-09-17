@@ -96,7 +96,7 @@ running_unknown
 
 `domain-forward.status` keeps user intent, core capability and materialized state apart. `effective` is `enabled` only when the active sing-box configuration carries the TCP destination-override rule; an enabled toggle on a core without the fork patch reports `unsupported`, and an enabled toggle that has not been materialized yet reports `pending`. The feature is TCP-only, so no UDP coverage is ever claimed.
 
-For TUN, dataplane readiness requires the configured TUN interface to exist in sysfs. For eBPF, MagicNet refreshes the active-program report and reuses the kernel attachment inspector to verify required cgroup/TC attachments. `transparent.status` exposes the normalized result without returning interface names or other unnecessary network identifiers.
+For TUN, dataplane readiness requires the configured TUN interface to exist in sysfs. For eBPF, MagicNet refreshes the active-program report and reuses the kernel attachment inspector to verify required cgroup/TC attachments. A `shared` or `hybrid` mode without a confirmed downstream interface reports `shared_tc: pending` and stays ready while the local cgroup path is attached, because no TC attachment is required yet; a listed downstream interface without its attachment is still not ready, and unknown attachment evidence is never promoted to ready. `transparent.status` exposes the normalized result without returning interface names or other unnecessary network identifiers.
 
 ## Privacy boundary
 
