@@ -1364,6 +1364,14 @@ fn configured_tun_is_canonical(names: &[String]) -> bool {
     !names.is_empty() && names.iter().all(|name| name == "magicnet0")
 }
 
+/// A local `--network tcp,udp` report already carries one finding per required
+/// kernel feature plus the active program state, so it is several times larger
+/// than the 4 KiB budget the generic diagnostic capture uses. Give the kernel
+/// probe its own budget and summarise the report: a truncated or oversized
+/// capture must never be presented as a kernel capability verdict.
+const EBPF_PROBE_TIMEOUT: Duration = Duration::from_secs(3);
+const EBPF_PROBE_STREAM_LIMIT: usize = 256 * 1024;
+
 fn ebpf_capability_probe(
     program: &str,
     mode: &str,
@@ -1371,7 +1379,76 @@ fn ebpf_capability_probe(
     interface: Option<&str>,
 ) -> ReadOnlyCommandResult {
     let args = ebpf_probe_args(mode, cgroup, interface);
-    read_only_command_result_with_timeout(program, &args, Duration::from_secs(3))
+    let mut command = Command::new(program);
+    command.args(&args);
+    let output =
+        match crate::run_bounded_command(command, EBPF_PROBE_TIMEOUT, EBPF_PROBE_STREAM_LIMIT) {
+            Ok(output) => output,
+            Err(err) => {
+                return ReadOnlyCommandResult {
+                    success: false,
+                    text: format!("{program}=unavailable reason={err}"),
+                }
+            }
+        };
+    let exited_cleanly = output.status.is_some_and(|status| status.success());
+    if output.truncated {
+        return ReadOnlyCommandResult {
+            success: false,
+            text: format!("report-overflow limit={EBPF_PROBE_STREAM_LIMIT}"),
+        };
+    }
+    if output.timed_out {
+        return ReadOnlyCommandResult {
+            success: false,
+            text: format!(
+                "{program}=timeout after {}ms",
+                EBPF_PROBE_TIMEOUT.as_millis()
+            ),
+        };
+    }
+    let Ok(report) = serde_json::from_slice::<Value>(&output.stdout) else {
+        return ReadOnlyCommandResult {
+            success: false,
+            text: format!("{program}=invalid report"),
+        };
+    };
+    let result = report
+        .get("result")
+        .and_then(Value::as_str)
+        .unwrap_or("unknown");
+    let findings = report
+        .get("findings")
+        .and_then(Value::as_array)
+        .map_or(0, Vec::len);
+    let required_failures = report
+        .pointer("/summary/required_failures")
+        .and_then(Value::as_u64)
+        .unwrap_or(0);
+    if exited_cleanly && required_failures == 0 {
+        return ReadOnlyCommandResult {
+            success: true,
+            text: format!("ok result={result} findings={findings} required=0"),
+        };
+    }
+    let first_failure = report
+        .get("findings")
+        .and_then(Value::as_array)
+        .and_then(|findings| {
+            findings.iter().find(|finding| {
+                finding.get("status").and_then(Value::as_str) == Some("FAIL")
+                    && finding.get("importance").and_then(Value::as_str) == Some("required")
+            })
+        })
+        .and_then(|finding| finding.get("feature").and_then(Value::as_str))
+        .map(|feature| format!(" first-failure={feature}"))
+        .unwrap_or_default();
+    ReadOnlyCommandResult {
+        success: false,
+        text: format!(
+            "failed result={result} findings={findings} required={required_failures}{first_failure}"
+        ),
+    }
 }
 
 fn ebpf_probe_args<'a>(
@@ -2075,6 +2152,20 @@ mod mode_aware_tests {
     use std::path::PathBuf;
     use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+    /// A complete, healthy `sing-box tools ebpf status --json` report in the
+    /// shape the kernel helper prints for a supported data path.
+    const HEALTHY_PROBE_REPORT_STUB: &str = concat!(
+        "#!/bin/sh\n",
+        "printf '%s\\n' '{",
+        "\"platform\":\"Android\",\"kernel_release\":\"test\",\"architecture\":\"arm64\",",
+        "\"mode\":\"local\",\"network\":[\"tcp\",\"udp\"],",
+        "\"findings\":[{\"status\":\"PASS\",\"scope\":\"local\",\"importance\":\"required\",",
+        "\"feature\":\"cgroup v2 path\",\"detail\":\"available\"}],",
+        "\"active_programs\":[],",
+        "\"summary\":{\"pass\":1,\"warn\":0,\"fail\":0,\"unknown\":0,\"required_failures\":0},",
+        "\"result\":\"supported\"}'\n",
+    );
+
     fn test_root(label: &str) -> Result<PathBuf, Box<dyn std::error::Error>> {
         let stamp = SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos();
         let root = std::env::temp_dir().join(format!("magicnet-{label}-{stamp}"));
@@ -2212,7 +2303,7 @@ mod mode_aware_tests {
             r#"{"inbounds":[{"type":"ebpf","tag":"tun-in","mode":"hybrid","local":{"dns_mode":"hijack"},"shared":{"interface":[]}}]}"#,
         )?;
         let binary = root.join("bin/sing-box");
-        fs::write(&binary, "#!/bin/sh\nexit 0\n")?;
+        fs::write(&binary, HEALTHY_PROBE_REPORT_STUB)?;
         let mut permissions = fs::metadata(&binary)?.permissions();
         permissions.set_mode(0o755);
         fs::set_permissions(&binary, permissions)?;
@@ -2327,6 +2418,128 @@ mod mode_aware_tests {
             dns_capture_rule_summary(false, true, false, false),
             (false, "redirects-missing")
         );
+    }
+    #[test]
+    fn large_complete_probe_report_is_a_capability_success(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        // The real local tcp+udp report carries 23 findings and is larger than
+        // the 4 KiB capture budget other diagnostics use. Its size must not
+        // turn a healthy kernel probe into a capability failure.
+        let root = test_root("ebpf-large-report")?;
+        fs::create_dir_all(root.join("bin"))?;
+        fs::write(
+            root.join(".config/magicnet/transparent-mode.conf"),
+            "MAGICNET_TRANSPARENT_MODE=ebpf\n",
+        )?;
+        fs::write(
+            root.join(".config/sing-box/config.json"),
+            r#"{"inbounds":[{"type":"ebpf","tag":"tun-in","mode":"hybrid","local":{"dns_mode":"hijack"},"shared":{"interface":[]}}]}"#,
+        )?;
+        let binary = root.join("bin/sing-box");
+        fs::write(
+            &binary,
+            r#"#!/bin/sh
+printf '{"platform":"Android","kernel_release":"test","architecture":"arm64","mode":"local","network":["tcp","udp"],"findings":['
+i=0
+while [ "$i" -lt 30 ]; do
+  [ "$i" -eq 0 ] || printf ','
+  printf '{"status":"PASS","scope":"local","importance":"required","feature":"kernel feature %s","detail":"padding padding padding padding padding padding padding padding padding padding padding padding padding padding padding padding padding padding padding padding padding padding padding padding padding"}' "$i"
+  i=$((i + 1))
+done
+printf '],"active_programs":[],"summary":{"pass":30,"warn":0,"fail":0,"unknown":0,"required_failures":0},"result":"supported"}\n'
+"#,
+        )?;
+        let mut permissions = fs::metadata(&binary)?.permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(&binary, permissions)?;
+        let app = App::for_test(root.clone());
+        let result = dataplane_check(&app, &transparent_mode(&app));
+
+        assert!(result.1.contains("probe=capability:ok"), "{}", result.1);
+        assert!(result.1.contains("findings=30"), "{}", result.1);
+        assert!(!result.1.contains("platform"), "{}", result.1);
+        fs::remove_dir_all(root)?;
+        Ok(())
+    }
+
+    #[test]
+    fn required_probe_failure_is_summarised_without_a_json_dump(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let root = test_root("ebpf-probe-failure")?;
+        fs::create_dir_all(root.join("bin"))?;
+        fs::write(
+            root.join(".config/magicnet/transparent-mode.conf"),
+            "MAGICNET_TRANSPARENT_MODE=ebpf\n",
+        )?;
+        fs::write(
+            root.join(".config/sing-box/config.json"),
+            r#"{"inbounds":[{"type":"ebpf","tag":"tun-in","mode":"local","local":{"dns_mode":"hijack"}}]}"#,
+        )?;
+        let binary = root.join("bin/sing-box");
+        fs::write(
+            &binary,
+            r#"#!/bin/sh
+printf '%s\n' '{"platform":"Android","kernel_release":"test","architecture":"arm64","mode":"local","network":["tcp","udp"],"findings":[{"status":"FAIL","scope":"local","importance":"required","feature":"cgroup v2 path: /sys/fs/cgroup","detail":"The path is not on a cgroup v2 filesystem."}],"active_programs":[],"summary":{"pass":0,"warn":0,"fail":1,"unknown":0,"required_failures":1},"result":"unsupported"}'
+exit 1
+"#,
+        )?;
+        let mut permissions = fs::metadata(&binary)?.permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(&binary, permissions)?;
+        let app = App::for_test(root.clone());
+        let result = dataplane_check(&app, &transparent_mode(&app));
+
+        assert!(
+            result
+                .1
+                .contains("probe=capability:failed(result=unsupported"),
+            "{}",
+            result.1
+        );
+        assert!(result.1.contains("required=1"), "{}", result.1);
+        assert!(
+            result
+                .1
+                .contains("first-failure=cgroup v2 path: /sys/fs/cgroup"),
+            "{}",
+            result.1
+        );
+        assert!(!result.1.contains("platform"), "{}", result.1);
+        fs::remove_dir_all(root)?;
+        Ok(())
+    }
+
+    #[test]
+    fn oversized_probe_capture_is_not_a_capability_verdict(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let root = test_root("ebpf-probe-overflow")?;
+        fs::create_dir_all(root.join("bin"))?;
+        fs::write(
+            root.join(".config/magicnet/transparent-mode.conf"),
+            "MAGICNET_TRANSPARENT_MODE=ebpf\n",
+        )?;
+        fs::write(
+            root.join(".config/sing-box/config.json"),
+            r#"{"inbounds":[{"type":"ebpf","tag":"tun-in","mode":"local","local":{"dns_mode":"hijack"}}]}"#,
+        )?;
+        let binary = root.join("bin/sing-box");
+        fs::write(
+            &binary,
+            "#!/bin/sh\ndd if=/dev/zero bs=1024 count=300 2>/dev/null | tr '\\0' 'a'\n",
+        )?;
+        let mut permissions = fs::metadata(&binary)?.permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(&binary, permissions)?;
+        let app = App::for_test(root.clone());
+        let result = dataplane_check(&app, &transparent_mode(&app));
+
+        assert!(
+            result.1.contains("probe=capability:failed(report-overflow"),
+            "{}",
+            result.1
+        );
+        fs::remove_dir_all(root)?;
+        Ok(())
     }
 }
 

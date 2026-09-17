@@ -81,6 +81,14 @@ Installer download: `https://github.com/LIghtJUNction/MagicNet/releases/latest/d
 - Resolve WeChat and Tencent media domains with local DNS and route them directly so image CDN requests keep regional affinity and avoid slow proxy fallthrough.
 - Restrict hotspot routing to discovered tether subnets so ordinary private-address Wi-Fi traffic cannot bypass app and domain routing rules.
 - Fix APatch fswatch startup by probing root-tool BusyBox locking helpers and keeping an optional watcher failure from masking a healthy sing-box restart.
+- Fix the eBPF Dataplane health item on real devices. A complete
+  `tools ebpf status --json` report carries one finding per required kernel
+  feature and is several times larger than the 4 KiB capture other diagnostics
+  use, so a healthy probe was truncated and reported as
+  `probe=capability:failed({...})` while the core was serving traffic normally.
+  The probe now has its own capture budget and summarises the report as
+  `ok result=supported findings=N required=0`, or as a bounded failure token
+  that names the first required failing feature instead of dumping raw JSON.
 
 ## v1.2.11 (2026-08-11)
 
