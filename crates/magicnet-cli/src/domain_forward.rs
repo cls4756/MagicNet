@@ -198,8 +198,9 @@ mod tests {
     use serde_json::json;
 
     fn write_config(app: &App, text: &str) {
-        fs::create_dir_all(app.moddir.join(".config/sing-box")).expect("create config directory");
-        fs::write(app.moddir.join(DOMAIN_FORWARD_CONF), text).expect("write domain forward config");
+        let path = app.moddir.join(DOMAIN_FORWARD_CONF);
+        fs::create_dir_all(path.parent().expect("config parent")).expect("create config directory");
+        fs::write(path, text).expect("write domain forward config");
     }
 
     #[test]

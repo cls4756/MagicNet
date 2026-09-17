@@ -1128,7 +1128,7 @@ fn ebpf_dataplane_check(app: &App, source: TransparentModeSource) -> (bool, Stri
         .iter()
         .map(|probe| {
             if probe.success {
-                "ok".to_string()
+                probe.text.clone()
             } else {
                 format!("failed({})", probe.text)
             }
@@ -1446,7 +1446,7 @@ fn ebpf_capability_probe(
     ReadOnlyCommandResult {
         success: false,
         text: format!(
-            "failed result={result} findings={findings} required={required_failures}{first_failure}"
+            "result={result} findings={findings} required={required_failures}{first_failure}"
         ),
     }
 }
