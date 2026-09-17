@@ -78,7 +78,7 @@ su -c /data/adb/modules/MagicNet/cli domain-forward enable
 WebUI 的“工具”页提供同一个开关，默认打开。状态分三层：
 
 - `configured`：你的选择，缺省即 `enabled`。
-- `core_support`：当前 `bin/sing-box` 是否带域名覆写能力。该能力来自 `sing-box-patches/` 里的 fork 补丁，需要更新内核后才会变成 `available`。
+- `core_support`：当前 `bin/sing-box` 是否带域名覆写能力。该能力来自 `sing-box-patches/` 里的 fork 补丁：先检查内核是否带补丁标记，再让内核解码一份探针配置，两步都通过才是 `available`。未打补丁的内核在遇到不认识的字段时会拒绝启动，所以那种内核会停在 `unavailable`，配置里不会出现任何它无法识别的字段。
 - `effective`：运行配置里是否真的带上了覆写规则。`unsupported` 表示内核不支持，`pending` 表示已保存但尚未物化。
 
 约束与行为：

@@ -42,12 +42,12 @@ scripts/pre-commit.sh
 
 WebUI 构建钩子运行前端单元测试、TypeScript 类型检查和生产构建，任一步失败都会中止打包。
 
-域名转发需要 fork 补丁：`sing-box-patches/` 保存 MagicNet 维护的补丁（`route-sniff-override-destination`），`scripts/apply-sing-box-patches.sh` 负责应用到 `sing-box/` 子模块并检查是否已应用/工作树是否干净。补丁必须在 `LIghtJUNction/sing-box` 侧提交，再用父仓库 gitlink 固定；未合入补丁的内核会被判定为 `core_support=unavailable`，此时开关保持 `configured=enabled`、`effective=unsupported`，不会把内核无法识别的字段写进运行配置。
-sing-box 不再下载上游预编译包。根目录 `sing-box/` 是 `LIghtJUNction/sing-box` 的源码子模块，父仓库 gitlink 固定审核过的提交；根目录 `sing-box.version` 固定该提交对应的语义化基础版本。`scripts/build-sing-box.sh` 使用 fork 内的默认构建标签，分别为 CI 配置校验和模块包编译 Linux amd64、Android arm64 二进制。更新 fork 后必须同步提交新的 gitlink；若基础版本变化，也要更新 `sing-box.version`：
+域名转发需要 fork 补丁：`sing-box-patches/` 保存 MagicNet 维护的补丁（`route-sniff-override-destination`），`scripts/apply-sing-box-patches.sh` 负责应用到 `sing-box/` 子模块并检查是否已应用/工作树是否干净。补丁提交在 `cls4756/magicnet-sing-box` 的 `magicnet-domain-forward` 分支上，父仓库用 gitlink 固定该提交，`scripts/apply-sing-box-patches.sh` 负责把补丁系列回放到 `sing-box/` 子模块。能力判定分两步：先看 `bin/sing-box` 是否带补丁的 JSON struct tag，再让内核自己解码一份探针配置；两步都通过才算 `core_support=available`。未合入补丁的内核会被判定为 `core_support=unavailable`，此时开关保持 `configured=enabled`、`effective=unsupported`，不会把内核无法识别的字段写进运行配置——未打补丁的内核遇到未知字段会直接拒绝启动。
+sing-box 不再下载上游预编译包。根目录 `sing-box/` 是 `cls4756/magicnet-sing-box` 的源码子模块，父仓库 gitlink 固定审核过的提交；根目录 `sing-box.version` 固定该提交对应的语义化基础版本。`scripts/build-sing-box.sh` 使用 fork 内的默认构建标签，分别为 CI 配置校验和模块包编译 Linux amd64、Android arm64 二进制。更新 fork 后必须同步提交新的 gitlink；若基础版本变化，也要更新 `sing-box.version`：
 
 ```bash
-git -C sing-box fetch origin testing
-git -C sing-box checkout origin/testing
+git -C sing-box fetch origin magicnet-domain-forward
+git -C sing-box checkout origin/magicnet-domain-forward
 git add sing-box
 ```
 

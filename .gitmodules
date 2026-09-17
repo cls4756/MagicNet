@@ -15,8 +15,8 @@
 	branch = main
 [submodule "sing-box"]
 	path = sing-box
-	url = https://github.com/LIghtJUNction/sing-box.git
-	branch = testing
+	url = https://github.com/cls4756/magicnet-sing-box.git
+	branch = magicnet-domain-forward
 	shallow = true
 [submodule "rules"]
 	path = rules

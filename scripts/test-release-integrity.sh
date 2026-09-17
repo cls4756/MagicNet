@@ -309,10 +309,10 @@ assert_lock zashboard v3.16.0 dist-no-fonts.zip 1d8c7aca69e6ddead5e4fe6e92ceda23
 
 singbox_url="$(git -C "$ROOT" config --file .gitmodules --get submodule.sing-box.url)"
 singbox_branch="$(git -C "$ROOT" config --file .gitmodules --get submodule.sing-box.branch)"
-[[ "$singbox_url" = "https://github.com/LIghtJUNction/sing-box.git" ]] ||
-    fail "sing-box source submodule does not use the LIghtJUNction fork"
-[[ "$singbox_branch" = "testing" ]] ||
-    fail "sing-box source submodule does not track the testing branch"
+[[ "$singbox_url" = "https://github.com/cls4756/magicnet-sing-box.git" ]] ||
+    fail "sing-box source submodule does not use the MagicNet sing-box fork"
+[[ "$singbox_branch" = "magicnet-domain-forward" ]] ||
+    fail "sing-box source submodule does not track the MagicNet patch branch"
 singbox_base_version="$(tr -d '\r\n' <"$ROOT/sing-box.version")"
 [[ "$singbox_base_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]] ||
     fail "sing-box base version lock is invalid"

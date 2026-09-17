@@ -40,6 +40,17 @@ Installer download: `https://github.com/LIghtJUNction/MagicNet/releases/latest/d
   retries once with the original IP address and keeps the original return path.
 - Project domain-forwarding intent, core capability and materialized state into
   `domain-forward.state`, and expose `cli --json domain-forward status`.
+- Fix the domain-forward capability probe: it matched the bare
+  `override_destination` field name, which a stock sing-box still carries inside
+  its inbound `sniff_override_destination` option. Every unpatched core was
+  reported as capable and then received a key it refuses to decode, so the core
+  exited at startup and the dataplane stayed down. The probe now matches the
+  fork's JSON struct tag and then asks the installed core to decode a probe
+  document; a core that rejects the key stays `configured=enabled` with
+  `effective=unsupported` and keeps a loadable configuration.
+- Build the core from the `cls4756/magicnet-sing-box` fork, whose
+  `magicnet-domain-forward` branch carries the `override_destination` patch, and
+  pin that revision in the parent gitlink.
 - Show installed app names and icons in the WebUI app policy list: rows and
   already-selected entries label the package through the KernelSU package API,
   icons come from `ksu://icon/<package>`, and the search box matches app names

@@ -15,10 +15,15 @@ const ENABLE_KEY: &str = "MAGICNET_DOMAIN_FORWARD";
 
 // Domain forwarding needs a fork change to sing-box: the sniff route action has
 // to replace the packet destination with the sniffed domain before the outbound
-// dials. The marker below is that option's JSON field name, and struct tags are
+// dials. The marker below is that option's JSON struct tag, and struct tags are
 // part of the compiled type metadata, so a bounded scan of the installed core
 // answers "does this build understand the key" without starting sing-box.
-const CORE_CAPABILITY_MARKER: &[u8] = b"override_destination";
+//
+// The `json:"` prefix is what keeps the scan honest. Upstream still declares
+// `sniff_override_destination` on the inbound options, so matching the bare field
+// name reports every stock core as capable and the runtime then publishes a key
+// the core refuses to decode.
+const CORE_CAPABILITY_MARKER: &[u8] = b"json:\"override_destination";
 const CORE_SCAN_LIMIT: u64 = 256 * 1024 * 1024;
 const CORE_SCAN_CHUNK: usize = 1 << 20;
 
@@ -251,6 +256,19 @@ mod tests {
     }
 
     #[test]
+    fn capability_scan_ignores_the_upstream_sniff_override_option() {
+        // A stock sing-box still declares `sniff_override_destination` on its
+        // inbound options. Matching that string reported an unpatched core as
+        // capable, and the runtime then published a key the core cannot decode.
+        let app = temp_app();
+        let bin = app.moddir.join(SINGBOX_BINARY);
+        fs::create_dir_all(bin.parent().expect("binary parent")).expect("create bin directory");
+        fs::write(&bin, r#"json:"sniff_override_destination,omitempty""#)
+            .expect("write stock core");
+        assert!(!core_supports_override(&app));
+    }
+
+    #[test]
     fn effective_state_never_claims_success_for_an_unsupported_core() {
         let app = temp_app();
         assert_eq!(
@@ -264,7 +282,11 @@ mod tests {
         );
 
         fs::create_dir_all(app.moddir.join("bin")).expect("create bin directory");
-        fs::write(app.moddir.join(SINGBOX_BINARY), "override_destination").expect("write core");
+        fs::write(
+            app.moddir.join(SINGBOX_BINARY),
+            "json:\"override_destination",
+        )
+        .expect("write core");
         assert_eq!(snapshot(&app).effective, "pending");
 
         fs::create_dir_all(app.moddir.join(".config/sing-box")).expect("create config directory");

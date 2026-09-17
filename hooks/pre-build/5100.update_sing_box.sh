@@ -34,7 +34,7 @@ case "$SOURCE_REVISION" in
     exit 1
     ;;
 esac
-SOURCE_REF="LIghtJUNction/sing-box@${SOURCE_REVISION}"
+SOURCE_REF="cls4756/magicnet-sing-box@${SOURCE_REVISION}"
 
 mkdir -p "$TARGET_DIR"
 TARGET_NEW="${TARGET_BIN}.new.$$"

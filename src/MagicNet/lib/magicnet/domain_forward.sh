@@ -41,19 +41,51 @@ magicnet_domain_forward_enabled() {
     return 1
 }
 
-# Capability probe. The option name only reaches the binary through the patch in
+# Capability probe. The option only reaches the binary through the patch in
 # sing-box-patches/, and struct tags are part of the compiled type metadata, so
-# a plain scan of the installed core answers "does this build understand the
-# key" without starting sing-box.
+# a scan of the installed core answers "does this build understand the key"
+# without starting sing-box.
+#
+# The `json:"` prefix is what keeps the scan honest. Upstream still declares
+# `sniff_override_destination` on the inbound options, so matching the bare field
+# name reports every stock core as capable and the rewrite then publishes a key
+# the core refuses to decode. The decoder itself is the final authority.
 magicnet_domain_forward_supported() {
     _df_bin="${MODDIR}/bin/sing-box"
     [ -f "$_df_bin" ] || {
         unset _df_bin
         return 1
     }
-    LC_ALL=C grep -qa 'override_destination' "$_df_bin" 2>/dev/null
-    _df_rc=$?
+    LC_ALL=C grep -qa 'json:"override_destination' "$_df_bin" 2>/dev/null || {
+        unset _df_bin
+        return 1
+    }
     unset _df_bin
+    magicnet_singbox_decodes_domain_forward
+}
+
+# Authoritative capability check: let the installed core decode a probe document
+# that uses the fork option. A core that exits on an unknown key takes the whole
+# dataplane down with it, so the rewrite never publishes a document the decoder
+# rejects. The probe is staged next to the runtime config, where the other
+# transient dot files already live, and removed again immediately.
+magicnet_singbox_decodes_domain_forward() {
+    _df_core="${MODDIR}/bin/sing-box"
+    [ -x "$_df_core" ] || {
+        unset _df_core
+        return 1
+    }
+    _df_probe="$(mktemp "${MODDIR}/.config/sing-box/.domain-forward-probe.XXXXXX" 2>/dev/null)" || {
+        # Without a place to stage the probe the capability stays unknown, and an
+        # unknown capability must never reach the runtime configuration.
+        unset _df_core
+        return 1
+    }
+    printf '%s\n' '{"route":{"rules":[{"inbound":["tun-in"],"network":["tcp"],"action":"sniff","override_destination":true}]}}' >"$_df_probe" 2>/dev/null
+    "$_df_core" check -c "$_df_probe" >/dev/null 2>&1
+    _df_rc=$?
+    rm -f "$_df_probe" 2>/dev/null
+    unset _df_core _df_probe
     return "$_df_rc"
 }
 

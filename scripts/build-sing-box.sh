@@ -101,7 +101,7 @@ if [[ ! "$BASE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
 fi
 
 SOURCE_REVISION="$(git -C "$SOURCE_DIR" rev-parse HEAD)"
-SOURCE_VERSION="${BASE_VERSION}+LIghtJUNction.${SOURCE_REVISION:0:12}"
+SOURCE_VERSION="${BASE_VERSION}+magicnet.${SOURCE_REVISION:0:12}"
 LDFLAGS="-X github.com/sagernet/sing-box/constant.Version=${SOURCE_VERSION} ${SHARED_LDFLAGS} -s -w -buildid="
 
 mkdir -p "$(dirname "$OUTPUT_PATH")"
@@ -114,7 +114,7 @@ cleanup() {
 trap cleanup EXIT
 
 printf 'sing-box build: %s @ %s for %s/%s (CGO=%s)\n' \
-    'LIghtJUNction/sing-box' "$SOURCE_REVISION" "$GOOS_TARGET" "$GOARCH_TARGET" \
+    'cls4756/magicnet-sing-box' "$SOURCE_REVISION" "$GOOS_TARGET" "$GOARCH_TARGET" \
     "$CGO_ENABLED_TARGET" >&2
 (
     cd "$SOURCE_DIR"
@@ -145,4 +145,4 @@ printf 'sing-box build: %s @ %s for %s/%s (CGO=%s)\n' \
 }
 chmod 0755 "$TMP_OUTPUT"
 mv -f "$TMP_OUTPUT" "$OUTPUT_PATH"
-printf '%s\n' "LIghtJUNction/sing-box@$SOURCE_REVISION"
+printf '%s\n' "cls4756/magicnet-sing-box@$SOURCE_REVISION"

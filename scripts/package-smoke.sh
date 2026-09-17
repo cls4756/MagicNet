@@ -101,11 +101,11 @@ singbox_build_tags="$(
     fail "packaged sing-box Go build metadata does not contain with_ebpf"
 
 singbox_source_ref="$(unzip -p "$ZIP_PATH" singbox.version | tr -d '\r\n')"
-[[ "$singbox_source_ref" =~ ^LIghtJUNction/sing-box@[0-9a-f]{40}$ ]] ||
-    fail "singbox.version does not identify a pinned LIghtJUNction fork revision"
+[[ "$singbox_source_ref" =~ ^cls4756/magicnet-sing-box@[0-9a-f]{40}$ ]] ||
+    fail "singbox.version does not identify a pinned MagicNet sing-box fork revision"
 expected_singbox_revision="$(git -C "$ROOT/sing-box" rev-parse HEAD 2>/dev/null)" ||
     fail "sing-box source submodule is not initialized"
-[[ "$singbox_source_ref" = "LIghtJUNction/sing-box@$expected_singbox_revision" ]] ||
+[[ "$singbox_source_ref" = "cls4756/magicnet-sing-box@$expected_singbox_revision" ]] ||
     fail "packaged sing-box revision differs from the source submodule"
 
 if grep -E '(^|/)\.git($|/)' "$entries_file" >/dev/null; then

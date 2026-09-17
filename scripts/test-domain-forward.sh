@@ -53,8 +53,44 @@ JSON
     chmod 600 "$CONFIG"
 }
 
-core_capable() { printf 'binary-padding-override_destination-padding\n' >"$BIN"; }
-core_incapable() { printf 'binary-padding-without-the-option\n' >"$BIN"; }
+# The fake cores double as data (the capability scan reads the file) and as
+# executables (the decode probe runs `sing-box check`). The marker mirrors the
+# fork's JSON struct tag; the stock core only carries the upstream inbound
+# option, whose name contains the same field name.
+core_capable() {
+    cat >"$BIN" <<'SH'
+#!/bin/sh
+# fork capability marker: json:"override_destination
+exit 0
+SH
+    chmod 0755 "$BIN"
+}
+
+core_incapable() {
+    cat >"$BIN" <<'SH'
+#!/bin/sh
+# stock inbound option: json:"sniff_override_destination,omitempty"
+exit 1
+SH
+    chmod 0755 "$BIN"
+}
+
+# A core that carries the fork marker but still refuses the key: the scan alone
+# would accept it, and only running the decoder keeps the config loadable.
+core_rejects_override() {
+    cat >"$BIN" <<'SH'
+#!/bin/sh
+# fork capability marker: json:"override_destination
+case "${1:-}" in
+check)
+    if grep -q override_destination "${3:-/dev/null}"; then exit 1; fi
+    exit 0
+    ;;
+esac
+exit 0
+SH
+    chmod 0755 "$BIN"
+}
 
 chmod_is_enforced() {
     local probe="$WORK/.chmod-probe"
@@ -91,6 +127,9 @@ rm -f "$CONF"
 
 # --- an incapable core must never see the option ------------------------------
 
+# Regression: the stock core carries `sniff_override_destination` on its inbound
+# options. Matching the bare field name reported it as capable and published a
+# key the core refuses to decode, which stopped the whole dataplane.
 core_incapable
 if magicnet_domain_forward_supported; then
     fail "a core without the fork option must not be reported as supported"
@@ -104,11 +143,25 @@ magicnet_singbox_apply_domain_forward "$CONFIG" || fail "apply must succeed as a
 [ "$(jq -S -c . "$CONFIG")" = "$before" ] || fail "an incapable core must leave the config unchanged"
 [ "$(override_rule_count)" = 0 ] || fail "an incapable core must not gain an override rule"
 
+# --- the decoder decides, not the scan ---------------------------------------
+
+core_rejects_override
+magicnet_domain_forward_supported && fail "a core that rejects the key must not be reported as supported"
+magicnet_domain_forward_effective && fail "domain forwarding must not be effective on a rejecting core"
+write_base_config
+before="$(jq -S -c . "$CONFIG")"
+magicnet_singbox_apply_domain_forward "$CONFIG" || fail "apply must succeed on a rejecting core"
+[ "$(jq -S -c . "$CONFIG")" = "$before" ] ||
+    fail "a rejecting core must leave the config unchanged"
+[ "$(override_rule_count)" = 0 ] || fail "a rejecting core must not gain an override rule"
+
 # --- a capable core plus the default switch adds exactly one TCP rule ---------
 
 core_capable
 magicnet_domain_forward_supported || fail "the capability probe missed the option"
 magicnet_domain_forward_effective || fail "domain forwarding must be effective by default"
+[ -z "$(find "$MODDIR/.config/sing-box" -name '.domain-forward-probe.*' -print -quit)" ] ||
+    fail "the decode probe must remove the document it staged"
 
 write_base_config
 magicnet_singbox_apply_domain_forward "$CONFIG" || fail "apply failed on a capable core"

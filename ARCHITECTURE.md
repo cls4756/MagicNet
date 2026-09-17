@@ -16,7 +16,7 @@ file-backed state contract lives in [`docs/state-plane.md`](docs/state-plane.md)
   evidence and external process/kernel facts into the canonical state plane.
 - `src/MagicNet/lib/magicnet`: device runtime shell modules. These implement
   lifecycle, subscription, routing, DNS, and supervisor behavior.
-- `sing-box`: pinned `LIghtJUNction/sing-box` source submodule. Build hooks
+- `sing-box`: pinned `cls4756/magicnet-sing-box` source submodule (MagicNet patch branch). Build hooks
   compile this fork into the Android arm64 data-plane binary.
 - `webui`: Vue user interface. It communicates through the CLI API contract.
 - `hooks`: reproducible build and release hooks.

@@ -32,7 +32,7 @@ legacy layout.
 - `pre-build/4900.update_tools.sh` installs the reviewed, SHA-256-locked arm64
   releases of `yq` and `jq`.
 - `pre-build/5100.update_sing_box.sh` builds the checked-out
-  `LIghtJUNction/sing-box` source snapshot for Android arm64 and records its
+  `cls4756/magicnet-sing-box` source snapshot for Android arm64 and records its
   source revision.
 - `pre-build/5150.update_ecapture.sh` installs the reviewed, SHA-256-locked
   eCapture Android arm64 release.
