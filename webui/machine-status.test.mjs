@@ -3,7 +3,7 @@ import test from "node:test";
 import { decodeMachineData, machineErrorCode, machineFailureText, parseMachineDns, parseMachineDomainForward, parseMachineNetwork, parseMachineRuntime } from "./src/composables/machineStatus.ts";
 
 const envelope = (command, data) => JSON.stringify({ schema: 1, ok: true, command, data });
-const dns = { profile: "default", primary: "bootstrap-local-dns", secondary: null, transport: "default" };
+const dns = { profile: "default", primary: "bootstrap-local-dns", secondary: null, transport: "default", via_proxy: false };
 const network = {
   configured: { ipv6_mode: "prefer_ipv4", mtu: 1400, udp_timeout: "5m" },
   effective: { ipv6_mode: "ipv4_only", stack: "mixed", mtu: 1280, udp_timeout: "3m" },
@@ -36,12 +36,47 @@ test("unsupported machine commands stay errors rather than enabling legacy fallb
 });
 
 test("DNS shape validation is shared and nullable secondary clears stale values", () => {
-  assert.deepEqual(parseMachineDns(envelope("dns.status", dns)), { ...dns, secondary: "" });
+  assert.deepEqual(parseMachineDns(envelope("dns.status", dns)), { profile: dns.profile, primary: dns.primary, secondary: "", transport: dns.transport, viaProxy: dns.via_proxy });
   for (const invalid of [{}, { ...dns, profile: "unsupported" }, { ...dns, primary: null },
     { ...dns, secondary: false }, { ...dns, transport: "quic" }]) {
     assert.equal(parseMachineDns(envelope("dns.status", invalid)), null);
   }
   assert.equal(parseMachineDns(envelope("network.status", dns)), null);
+});
+
+test("DNS profile expansion accepts all canonical profiles and via_proxy flag", () => {
+  for (const profile of [
+    "default",
+    "cloudflare-doh", "cloudflare-doh-direct",
+    "cloudflare-dot", "cloudflare-dot-direct",
+    "cloudflare-udp", "cloudflare-udp-direct",
+    "google-doh", "google-doh-direct",
+    "google-dot", "google-dot-direct",
+    "adguard-doh", "adguard-doh-direct",
+    "quad9-doh", "quad9-doh-direct",
+  ]) {
+    for (const via_proxy of [true, false, null]) {
+      const payload = { ...dns, profile, via_proxy };
+      const result = parseMachineDns(envelope("dns.status", payload));
+      assert.ok(result, `profile ${profile} with via_proxy=${via_proxy} must parse`);
+      assert.equal(result.profile, profile);
+      assert.equal(result.viaProxy, via_proxy === null ? true : via_proxy);
+    }
+  }
+  for (const invalid of [
+    "cloudflare-doh-direct-foo",
+    "google-udp",
+    "adguard-dot",
+    "quad9-udp",
+    "cloudflare-direct",
+  ]) {
+    const input = { ...dns, profile: invalid };
+    assert.equal(parseMachineDns(envelope("dns.status", input)), null, `profile ${invalid} must be rejected`);
+  }
+  for (const invalid of [0, 1, "string", {}]) {
+    const input = { ...dns, via_proxy: invalid };
+    assert.equal(parseMachineDns(envelope("dns.status", input)), null, `via_proxy=${invalid} must be rejected`);
+  }
 });
 
 test("network status preserves configured/effective differences and unknown values", () => {

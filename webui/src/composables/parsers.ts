@@ -195,6 +195,7 @@ export const dnsDefaults: DnsState = {
   primary: "bootstrap-local-dns",
   secondary: "",
   transport: "default",
+  viaProxy: true,
 };
 
 export const warpDefaults: WarpState = {

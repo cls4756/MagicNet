@@ -8,10 +8,17 @@ magicnet_dns_profile() {
         _profile="$(magicnet_conf_value "$(magicnet_dns_conf)" MAGICNET_DNS_PROFILE 2>/dev/null || true)"
     fi
     case "${_profile:-default}" in
-    default | cloudflare-doh | cloudflare-dot | cloudflare-udp) printf '%s\n' "${_profile:-default}" ;;
+    default) printf '%s\n' "default" ;;
+    cloudflare-doh | cloudflare-doh-direct) printf '%s\n' "${_profile:-default}" ;;
+    cloudflare-dot | cloudflare-dot-direct) printf '%s\n' "${_profile:-default}" ;;
+    cloudflare-udp | cloudflare-udp-direct) printf '%s\n' "${_profile:-default}" ;;
     cloudflare | doh) printf '%s\n' "cloudflare-doh" ;;
-    dot) printf '%s\n' "cloudflare-dot" ;;
-    udp | 1.1.1.1) printf '%s\n' "cloudflare-udp" ;;
+    cloudflare-dot | dot) printf '%s\n' "cloudflare-dot" ;;
+    cloudflare-udp | udp | 1.1.1.1) printf '%s\n' "cloudflare-udp" ;;
+    google-doh | google-doh-direct | google) printf '%s\n' "${_profile:-google-doh}" ;;
+    google-dot | google-dot-direct) printf '%s\n' "${_profile:-google-dot}" ;;
+    adguard-doh | adguard-doh-direct | adguard) printf '%s\n' "${_profile:-adguard-doh}" ;;
+    quad9-doh | quad9-doh-direct | quad9) printf '%s\n' "${_profile:-quad9-doh}" ;;
     *) printf '%s\n' "default" ;;
     esac
     unset _profile
@@ -65,32 +72,78 @@ magicnet_dns_apply_singbox() {
         unset _profile _bootstrap_server _config
         return 1
     }
+    _via_proxy="${MAGICNET_DNS_VIA_PROXY:-}"
+    [ -n "$_via_proxy" ] || _via_proxy="$(magicnet_conf_value "$(magicnet_dns_conf)" MAGICNET_DNS_VIA_PROXY 2>/dev/null || true)"
+    case "$_via_proxy" in
+    0 | false | no | off) _via_proxy=0 ;;
+    *) _via_proxy=1 ;;
+    esac
     _tmp="${_config}.magicnet-dns.new"
     magicnet_jq_install_config "$_config" "$_tmp" "$_jq" --arg profile "$_profile" --arg bootstrap_server "$_bootstrap_server" \
-        --argjson dns_capture_singbox_mark "$(magicnet_dns_capture_singbox_mark)" -e '
-      def cf_udp($tag; $server):
-        {"type":"udp","tag":$tag,"server":$server,"detour":"proxy"};
-      def cf_tls($tag; $server):
-        {"type":"tls","tag":$tag,"server":$server,"server_port":853,"detour":"proxy","tls":{"server_name":"cloudflare-dns.com"}};
-      def cf_https($tag; $server):
-        {"type":"https","tag":$tag,"server":$server,"server_port":443,"detour":"proxy","path":"/dns-query","tls":{"server_name":"cloudflare-dns.com"}};
+        --argjson dns_capture_singbox_mark "$(magicnet_dns_capture_singbox_mark)" --argjson via_proxy "$_via_proxy" -e '
+      # Build a DNS server definition for a given provider and transport.
+      # When via_proxy is true, the server uses detour:"proxy" so queries
+      # are routed through the sing-box proxy outbound. When false, the
+      # server is contacted directly (or marked for kernel-bypass exemption).
+      def make_udp($tag; $server; $via_proxy; $mark):
+        if $via_proxy then
+          {"type":"udp","tag":$tag,"server":$server,"detour":"proxy"}
+        else
+          {"type":"udp","tag":$tag,"server":$server,"routing_mark":$mark}
+        end;
+      def make_tls($tag; $server; $sni; $via_proxy):
+        if $via_proxy then
+          {"type":"tls","tag":$tag,"server":$server,"server_port":853,"detour":"proxy","tls":{"server_name":$sni}}
+        else
+          {"type":"tls","tag":$tag,"server":$server,"server_port":853,"tls":{"server_name":$sni}}
+        end;
+      def make_https($tag; $server; $path; $sni; $via_proxy):
+        if $via_proxy then
+          {"type":"https","tag":$tag,"server":$server,"server_port":443,"detour":"proxy","path":$path,"tls":{"server_name":$sni}}
+        else
+          {"type":"https","tag":$tag,"server":$server,"server_port":443,"path":$path,"tls":{"server_name":$sni}}
+        end;
+      # Provider configuration table: maps profile -> provider details
+      def provider_for($profile):
+        if $profile == "default" then {tag_prefix:"bootstrap-local-dns",via_proxy:false}
+        elif ($profile | startswith("cloudflare")) then
+          {tag_prefix:"cloudflare",primary:"1.1.1.1",secondary:"1.0.0.1",sni:"cloudflare-dns.com",via_proxy:($profile | endswith("-direct") | not)}
+        elif ($profile | startswith("google")) then
+          {tag_prefix:"google",primary:"8.8.8.8",secondary:"8.8.4.4",sni:"dns.google",via_proxy:($profile | endswith("-direct") | not)}
+        elif ($profile | startswith("adguard")) then
+          {tag_prefix:"adguard",primary:"94.140.14.14",secondary:"",sni:"dns.adguard-dns.com",via_proxy:($profile | endswith("-direct") | not)}
+        elif ($profile | startswith("quad9")) then
+          {tag_prefix:"quad9",primary:"9.9.9.9",secondary:"149.112.112.112",sni:"dns.quad9.net",via_proxy:($profile | endswith("-direct") | not)}
+        else {tag_prefix:"bootstrap-local-dns",via_proxy:false} end;
+      # Resolve which transport to use based on profile suffix
+      def transport_for($profile):
+        if ($profile | endswith("-udp")) or ($profile == "cloudflare-udp") then "udp"
+        elif ($profile | endswith("-dot")) or ($profile == "cloudflare-dot") then "tls"
+        else "https"
+        end;
+      def server_tags_for($provider):
+        [$provider.tag_prefix + "-profile-dns", $provider.tag_prefix + "-backup-dns"];
+      def build_server($transport; $tag; $server; $provider; $mark):
+        if $transport == "udp" then make_udp($tag; $server; $provider.via_proxy; $mark)
+        elif $transport == "tls" then make_tls($tag; $server; $provider.sni; $provider.via_proxy)
+        else make_https($tag; $server; "/dns-query"; $provider.sni; $provider.via_proxy) end;
+      def managed_tags:
+        ["bootstrap-local-dns","cloudflare-profile-dns","cloudflare-backup-dns",
+         "google-profile-dns","google-backup-dns","adguard-profile-dns","adguard-backup-dns",
+         "quad9-profile-dns","quad9-backup-dns"];
       def default_bootstrap:
         {"type":"https","tag":"bootstrap-local-dns","server":$bootstrap_server,"server_port":443,"path":"/dns-query","headers":{"Host":"dns.alidns.com"},"tls":{"server_name":"dns.alidns.com"}};
-      def server_for($profile; $tag; $server):
-        if $profile == "cloudflare-udp" then cf_udp($tag; $server)
-        elif $profile == "cloudflare-dot" then cf_tls($tag; $server)
-        else cf_https($tag; $server)
-        end;
       .dns.servers = (
         (.dns.servers // [])
-        | map(select((.tag // "") as $tag |
-          ($tag != "bootstrap-local-dns" and
-           $tag != "cloudflare-profile-dns" and
-           $tag != "cloudflare-backup-dns")))
+        | map(select((.tag // "") as $tag | managed_tags | index($tag) | not))
         | (if $profile == "default" then [default_bootstrap]
-           else [default_bootstrap,
-                 server_for($profile; "cloudflare-profile-dns"; "1.1.1.1"),
-                 server_for($profile; "cloudflare-backup-dns"; "1.0.0.1")]
+           else
+             (provider_for($profile) | . as $provider |
+              (transport_for($profile) | . as $transport |
+               [default_bootstrap,
+                build_server($transport; ($provider.tag_prefix + "-profile-dns"); $provider.primary; $provider; $dns_capture_singbox_mark),
+                (if $provider.secondary then build_server($transport; ($provider.tag_prefix + "-backup-dns"); $provider.secondary; $provider; $dns_capture_singbox_mark) else empty end)
+               ]))
            end) + .
       )
       # Direct UDP DNS servers are contacted by sing-box itself. Mark those
@@ -103,8 +156,7 @@ magicnet_dns_apply_singbox() {
           end
         )
       | if $profile == "default" then .dns.final = "bootstrap-local-dns"
-        else .dns.final = "cloudflare-profile-dns"
-        end
+        else .dns.final = ((provider_for($profile)).tag_prefix + "-profile-dns") end
       # sing-box 1.14 adds per-query timeout, optimistic DNS caching and DNS
       # cache persistence. Apply conservative defaults only when the user has
       # not made an explicit choice. A disabled cache remains disabled.
@@ -123,7 +175,7 @@ magicnet_dns_apply_singbox() {
         else . end
     ' "$_config"
     _rc=$?
-    unset _profile _bootstrap_server _config _jq _tmp
+    unset _profile _bootstrap_server _config _jq _tmp _via_proxy
     return "$_rc"
 }
 

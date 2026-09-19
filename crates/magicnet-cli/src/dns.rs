@@ -68,21 +68,43 @@ fn dns_test_curl_args(url: &str) -> Vec<&str> {
 
 fn dns_status(app: &App) {
     let profile = dns_profile(app);
+    let via_proxy = !profile.ends_with("-direct");
     println!("profile={profile}");
+    println!("via_proxy={}", if via_proxy { "true" } else { "false" });
     match profile.as_str() {
-        "cloudflare-udp" => {
+        "cloudflare-udp" | "cloudflare-udp-direct" => {
             println!("primary=1.1.1.1");
             println!("secondary=1.0.0.1");
             println!("transport=udp");
         }
-        "cloudflare-dot" => {
+        "cloudflare-dot" | "cloudflare-dot-direct" => {
             println!("primary=tls://1.1.1.1");
             println!("secondary=tls://1.0.0.1");
             println!("transport=dot");
         }
-        "cloudflare-doh" => {
+        "cloudflare-doh" | "cloudflare-doh-direct" => {
             println!("primary=https://cloudflare-dns.com/dns-query");
             println!("secondary=https://1.0.0.1/dns-query");
+            println!("transport=doh");
+        }
+        "google-dot" | "google-dot-direct" => {
+            println!("primary=tls://8.8.8.8");
+            println!("secondary=tls://8.8.4.4");
+            println!("transport=dot");
+        }
+        "google-doh" | "google-doh-direct" => {
+            println!("primary=https://dns.google/dns-query");
+            println!("secondary=https://8.8.4.4/dns-query");
+            println!("transport=doh");
+        }
+        "adguard-doh" | "adguard-doh-direct" => {
+            println!("primary=https://dns.adguard-dns.com/dns-query");
+            println!("secondary=");
+            println!("transport=doh");
+        }
+        "quad9-doh" | "quad9-doh-direct" => {
+            println!("primary=https://dns.quad9.net/dns-query");
+            println!("secondary=https://149.112.112.112/dns-query");
             println!("transport=doh");
         }
         _ => {
@@ -108,9 +130,24 @@ fn dns_set(app: &App, profile: &str) -> Result<(), String> {
 fn normalize_profile(profile: &str) -> Result<&'static str, String> {
     match profile {
         "default" | "system" | "local" => Ok("default"),
+        // Cloudflare profiles - preserve -direct suffix
         "cloudflare" | "cloudflare-doh" | "1.1.1.1-doh" | "doh" => Ok("cloudflare-doh"),
-        "cloudflare-dot" | "1.1.1.1-dot" | "dot" => Ok("cloudflare-dot"),
+        "cloudflare-doh-direct" => Ok("cloudflare-doh-direct"),
+        "cloudflare" | "cloudflare-dot" | "1.1.1.1-dot" | "dot" => Ok("cloudflare-dot"),
+        "cloudflare-dot-direct" => Ok("cloudflare-dot-direct"),
         "cloudflare-udp" | "1.1.1.1" | "udp" => Ok("cloudflare-udp"),
+        "cloudflare-udp-direct" => Ok("cloudflare-udp-direct"),
+        // Google profiles
+        "google" | "google-doh" | "8.8.8.8-doh" => Ok("google-doh"),
+        "google-doh-direct" => Ok("google-doh-direct"),
+        "google-dot" | "8.8.8.8-dot" => Ok("google-dot"),
+        "google-dot-direct" => Ok("google-dot-direct"),
+        // AdGuard profiles
+        "adguard" | "adguard-doh" | "94.140.14.14-doh" => Ok("adguard-doh"),
+        "adguard-doh-direct" => Ok("adguard-doh-direct"),
+        // Quad9 profiles
+        "quad9" | "quad9-doh" | "9.9.9.9-doh" => Ok("quad9-doh"),
+        "quad9-doh-direct" => Ok("quad9-doh-direct"),
         _ => Err(dns_usage()),
     }
 }
@@ -151,7 +188,16 @@ fn dns_profile(app: &App) -> String {
 }
 
 fn dns_usage() -> String {
-    "Usage: cli dns {status|set <default|cloudflare-doh|cloudflare-dot|cloudflare-udp>|test [domain]|apply}"
+    "Usage: cli dns {status|set <profile>|test [domain]|apply}\n\
+     Available profiles:\n\
+     - default\n\
+     - cloudflare-doh [direct: cloudflare-doh-direct]\n\
+     - cloudflare-dot [direct: cloudflare-dot-direct]\n\
+     - cloudflare-udp [direct: cloudflare-udp-direct]\n\
+     - google-doh [direct: google-doh-direct]\n\
+     - google-dot [direct: google-dot-direct]\n\
+     - adguard-doh [direct: adguard-doh-direct]\n\
+     - quad9-doh [direct: quad9-doh-direct]"
         .to_string()
 }
 

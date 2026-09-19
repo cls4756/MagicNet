@@ -49,14 +49,15 @@ assert_profile_uses_proxy_detour() {
   local profile="$1"
   local expected_type="$2"
   local expected_port="$3"
+  local tag_prefix="$4"
   MAGICNET_DNS_PROFILE="$profile" magicnet_dns_apply_singbox
 
-  jq -e --arg expected_type "$expected_type" --argjson expected_port "$expected_port" '
+  jq -e --arg expected_type "$expected_type" --argjson expected_port "$expected_port" --arg tag_prefix "$tag_prefix" '
       ([.dns.servers[]
-        | select(.tag == "cloudflare-profile-dns" or .tag == "cloudflare-backup-dns")
+        | select(.tag == ($tag_prefix + "-profile-dns") or .tag == ($tag_prefix + "-backup-dns"))
         | select(.type == $expected_type and .detour == "proxy")
         | select((.server_port // 53) == $expected_port)] | length) == 2
-        and .dns.final == "cloudflare-profile-dns"
+        and .dns.final == ($tag_prefix + "-profile-dns")
         and ([.dns.servers[] | select(.tag == "bootstrap-local-dns")
           | .type == "https" and .server == "223.5.5.5" and has("detour") | not] | length) == 1
     ' "$MODDIR/.config/sing-box/config.json" >/dev/null || {
@@ -66,9 +67,48 @@ assert_profile_uses_proxy_detour() {
   }
 }
 
-assert_profile_uses_proxy_detour cloudflare-udp udp 53
-assert_profile_uses_proxy_detour cloudflare-dot tls 853
-assert_profile_uses_proxy_detour cloudflare-doh https 443
+# -direct profiles must contact servers directly (no detour:"proxy"), with UDP
+# servers marked with a routing_mark for kernel-bypass exemption.
+assert_profile_direct_only() {
+  local profile="$1"
+  local expected_type="$2"
+  local expected_port="$3"
+  local tag_prefix="$4"
+  MAGICNET_DNS_PROFILE="$profile" magicnet_dns_apply_singbox
+
+  jq -e --arg expected_type "$expected_type" --argjson expected_port "$expected_port" --arg tag_prefix "$tag_prefix" --argjson mark "$(magicnet_dns_capture_singbox_mark)" '
+      ([.dns.servers[]
+        | select(.tag == ($tag_prefix + "-profile-dns") or .tag == ($tag_prefix + "-backup-dns"))
+        | select(.type == $expected_type and (.detour // "") == "")
+        | select((.server_port // 53) == $expected_port)] | length) == 2
+        and .dns.final == ($tag_prefix + "-profile-dns")
+        and ([.dns.servers[]
+          | select(.tag == ($tag_prefix + "-profile-dns") or .tag == ($tag_prefix + "-backup-dns"))
+          | select(.type == "udp") | .routing_mark == $mark] | length) == 1
+        and ([.dns.servers[] | select(.tag == "bootstrap-local-dns")
+          | .type == "https" and .server == "223.5.5.5" and has("detour") | not] | length) == 1
+    ' "$MODDIR/.config/sing-box/config.json" >/dev/null || {
+    printf 'DNS profile %s must contact servers directly without proxy detour\n' "$profile" >&2
+    exit 1
+  }
+}
+
+assert_profile_uses_proxy_detour cloudflare-udp udp 53 cloudflare
+assert_profile_uses_proxy_detour cloudflare-dot tls 853 cloudflare
+assert_profile_uses_proxy_detour cloudflare-doh https 443 cloudflare
+assert_profile_uses_proxy_detour google-doh https 443 google
+assert_profile_uses_proxy_detour google-dot tls 853 google
+assert_profile_uses_proxy_detour adguard-doh https 443 adguard
+assert_profile_uses_proxy_detour quad9-doh https 443 quad9
+
+# -direct profiles must NOT use proxy detour — they contact servers directly.
+assert_profile_direct_only cloudflare-udp-direct udp 53 cloudflare
+assert_profile_direct_only cloudflare-dot-direct tls 853 cloudflare
+assert_profile_direct_only cloudflare-doh-direct https 443 cloudflare
+assert_profile_direct_only google-doh-direct https 443 google
+assert_profile_direct_only google-dot-direct tls 853 google
+assert_profile_direct_only adguard-doh-direct https 443 adguard
+assert_profile_direct_only quad9-doh-direct https 443 quad9
 
 MAGICNET_DNS_PROFILE=default magicnet_dns_apply_singbox
 jq -e '

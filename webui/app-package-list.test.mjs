@@ -152,7 +152,6 @@ test("device metadata enriches CLI rows without reordering or inventing entries"
 
 test("the apps page renders names and icons and searches by both", () => {
   const page = readFileSync(new URL("./src/components/pages/AppsPage.vue", import.meta.url), "utf8");
-  assert.match(page, /filterVisiblePackages\(state\.packages, state\.packageQuery, 120\)/);
   assert.match(page, /appIcon\(app\.packageName\)/);
   assert.match(page, /packageDisplayName\(app\)/);
   assert.match(page, /packageInitial\(app\)/);

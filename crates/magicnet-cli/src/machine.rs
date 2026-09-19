@@ -248,12 +248,29 @@ fn supervisor_data(app: &App) -> Value {
 
 fn dns_status_value(app: &App) -> Value {
     let profile = dns_profile(app);
+    let via_proxy = !profile.ends_with("-direct");
     let (primary, secondary, transport) = match profile.as_str() {
-        "cloudflare-udp" => ("1.1.1.1", Some("1.0.0.1"), "udp"),
-        "cloudflare-dot" => ("tls://1.1.1.1", Some("tls://1.0.0.1"), "dot"),
-        "cloudflare-doh" => (
+        "cloudflare-udp" | "cloudflare-udp-direct" => ("1.1.1.1", Some("1.0.0.1"), "udp"),
+        "cloudflare-dot" | "cloudflare-dot-direct" => ("tls://1.1.1.1", Some("tls://1.0.0.1"), "dot"),
+        "cloudflare-doh" | "cloudflare-doh-direct" => (
             "https://cloudflare-dns.com/dns-query",
             Some("https://1.0.0.1/dns-query"),
+            "doh",
+        ),
+        "google-doh" | "google-doh-direct" => (
+            "https://dns.google/dns-query",
+            Some("https://8.8.4.4/dns-query"),
+            "doh",
+        ),
+        "google-dot" | "google-dot-direct" => ("tls://8.8.8.8", Some("tls://8.8.4.4"), "dot"),
+        "adguard-doh" | "adguard-doh-direct" => (
+            "https://dns.adguard-dns.com/dns-query",
+            None,
+            "doh",
+        ),
+        "quad9-doh" | "quad9-doh-direct" => (
+            "https://dns.quad9.net/dns-query",
+            Some("https://149.112.112.112/dns-query"),
             "doh",
         ),
         _ => ("bootstrap-local-dns", None, "default"),
@@ -265,6 +282,7 @@ fn dns_status_value(app: &App) -> Value {
             "primary": primary,
             "secondary": secondary,
             "transport": transport,
+            "via_proxy": via_proxy,
         }),
     )
 }
@@ -612,9 +630,25 @@ fn dns_profile(app: &App) -> String {
         .remove("MAGICNET_DNS_PROFILE")
         .unwrap_or_default();
     match value.as_str() {
+        "default" | "system" | "local" => "default",
+        // Cloudflare profiles
         "cloudflare" | "cloudflare-doh" | "1.1.1.1-doh" | "doh" => "cloudflare-doh",
-        "cloudflare-dot" | "1.1.1.1-dot" | "dot" => "cloudflare-dot",
+        "cloudflare-doh-direct" => "cloudflare-doh-direct",
+        "cloudflare" | "cloudflare-dot" | "1.1.1.1-dot" | "dot" => "cloudflare-dot",
+        "cloudflare-dot-direct" => "cloudflare-dot-direct",
         "cloudflare-udp" | "1.1.1.1" | "udp" => "cloudflare-udp",
+        "cloudflare-udp-direct" => "cloudflare-udp-direct",
+        // Google profiles
+        "google" | "google-doh" | "8.8.8.8-doh" => "google-doh",
+        "google-doh-direct" => "google-doh-direct",
+        "google-dot" | "8.8.8.8-dot" => "google-dot",
+        "google-dot-direct" => "google-dot-direct",
+        // AdGuard profiles
+        "adguard" | "adguard-doh" | "94.140.14.14-doh" => "adguard-doh",
+        "adguard-doh-direct" => "adguard-doh-direct",
+        // Quad9 profiles
+        "quad9" | "quad9-doh" | "9.9.9.9-doh" => "quad9-doh",
+        "quad9-doh-direct" => "quad9-doh-direct",
         _ => "default",
     }
     .to_string()

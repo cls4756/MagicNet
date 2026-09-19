@@ -367,17 +367,42 @@ fn sourced_conf_value_is_allowed(rel: &str, key: &str, value: &str) -> bool {
             "default"
                 | "system"
                 | "local"
+                // Cloudflare profiles
                 | "cloudflare"
                 | "cloudflare-doh"
+                | "cloudflare-doh-direct"
                 | "1.1.1.1-doh"
                 | "doh"
                 | "cloudflare-dot"
+                | "cloudflare-dot-direct"
                 | "1.1.1.1-dot"
                 | "dot"
                 | "cloudflare-udp"
+                | "cloudflare-udp-direct"
                 | "1.1.1.1"
                 | "udp"
+                // Google profiles
+                | "google"
+                | "google-doh"
+                | "google-doh-direct"
+                | "8.8.8.8-doh"
+                | "google-dot"
+                | "google-dot-direct"
+                | "8.8.8.8-dot"
+                // AdGuard profiles
+                | "adguard"
+                | "adguard-doh"
+                | "adguard-doh-direct"
+                | "94.140.14.14-doh"
+                // Quad9 profiles
+                | "quad9"
+                | "quad9-doh"
+                | "quad9-doh-direct"
+                | "9.9.9.9-doh"
         ),
+        (".config/magicnet/dns.conf", "MAGICNET_DNS_VIA_PROXY") => {
+            matches!(value, "0" | "1")
+        }
         (".config/magicnet/warp.conf", "MAGICNET_WARP_ENABLED") => {
             matches!(
                 value,

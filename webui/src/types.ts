@@ -90,11 +90,29 @@ export type BlocklistState = {
   newDomain: string;
 };
 
+export type DnsProfile =
+  | "default"
+  | "cloudflare-doh"
+  | "cloudflare-doh-direct"
+  | "cloudflare-dot"
+  | "cloudflare-dot-direct"
+  | "cloudflare-udp"
+  | "cloudflare-udp-direct"
+  | "google-doh"
+  | "google-doh-direct"
+  | "google-dot"
+  | "google-dot-direct"
+  | "adguard-doh"
+  | "adguard-doh-direct"
+  | "quad9-doh"
+  | "quad9-doh-direct";
+
 export type DnsState = {
-  profile: "default" | "cloudflare-doh" | "cloudflare-dot" | "cloudflare-udp";
+  profile: DnsProfile;
   primary: string;
   secondary: string;
   transport: string;
+  viaProxy: boolean;
 };
 
 export type WarpState = {

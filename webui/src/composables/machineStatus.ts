@@ -73,17 +73,29 @@ export function machineFailureText(text: string): string {
 
 export function parseMachineDns(text: string): DnsState | null {
   const data = decodeMachineData(text, "dns.status");
+  const validProfiles = [
+    "default",
+    "cloudflare-doh", "cloudflare-doh-direct",
+    "cloudflare-dot", "cloudflare-dot-direct",
+    "cloudflare-udp", "cloudflare-udp-direct",
+    "google-doh", "google-doh-direct",
+    "google-dot", "google-dot-direct",
+    "adguard-doh", "adguard-doh-direct",
+    "quad9-doh", "quad9-doh-direct",
+  ];
   if (!data || typeof data.profile !== "string" ||
-    !["default", "cloudflare-doh", "cloudflare-dot", "cloudflare-udp"].includes(data.profile) ||
+    !validProfiles.includes(data.profile) ||
     typeof data.primary !== "string" || !data.primary ||
     (data.secondary !== null && typeof data.secondary !== "string") ||
-    typeof data.transport !== "string" || !["default", "doh", "dot", "udp"].includes(data.transport)
+    typeof data.transport !== "string" || !["default", "doh", "dot", "udp"].includes(data.transport) ||
+    (typeof data.via_proxy !== "boolean" && data.via_proxy !== null && data.via_proxy !== undefined)
   ) return null;
   return {
     profile: data.profile as DnsState["profile"],
     primary: data.primary,
     secondary: data.secondary ?? "",
     transport: data.transport,
+    viaProxy: data.via_proxy !== null && data.via_proxy !== undefined ? Boolean(data.via_proxy) : true,
   };
 }
 

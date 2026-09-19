@@ -812,7 +812,7 @@ fn dns_capture_profile_is_direct_udp(app: &App) -> bool {
                 (key.trim() == "MAGICNET_DNS_PROFILE").then(|| value.trim().to_string())
             })
         })
-        .is_some_and(|profile| matches!(profile.as_str(), "cloudflare-udp" | "udp" | "1.1.1.1"))
+        .is_some_and(|profile| matches!(profile.as_str(), "cloudflare-udp" | "cloudflare-udp-direct" | "udp" | "1.1.1.1"))
 }
 
 fn dns_capture_family_rules(program: &str) -> Option<(bool, bool, bool, bool)> {

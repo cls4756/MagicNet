@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { t } from "@/i18n";
-import { CheckCheck, CheckCircle2, Copy, ListFilter, Plus, RefreshCw, RotateCcw, ShieldCheck, Trash2, X } from "lucide-vue-next";
+import { CheckCheck, Copy, ListFilter, Plus, RefreshCw } from "lucide-vue-next";
 import { computed, onMounted, ref } from "vue";
 import Button from "@/components/ui/Button.vue";
 import Card from "@/components/ui/Card.vue";
@@ -15,18 +15,15 @@ import { devicePackageIconsAvailable } from "@/composables/devicePackages";
 import { useMagicNet } from "@/composables/useMagicNet";
 import { copyText, execFailed, redactedCliPreview } from "@/utils";
 import AppPolicyRouteGuide from "./AppPolicyRouteGuide.vue";
-import { filterVisiblePackages, packageDisplayName, packageIconUrl, packageInitial } from "./appPackageList";
+import { packageDisplayName, packageIconUrl, packageInitial } from "./appPackageList";
 import { buildAppPolicySummary, formatAppPolicyFullReport, formatAppPolicySafeReport, isValidPackageName } from "./appPolicyInsights";
 import { buildAppPolicyChangePlan, type AppPolicyChangeOperation, type AppPolicyChangePlan } from "./appPolicyChangePlan";
 
 const { state, runCli, refreshApps, refreshPackages, shellQuote } = useMagicNet();
 const { isRunning, withAction } = useActionLock();
-const removedBypass = ref<string[]>([]);
 const pendingAppAction = ref<PendingAppAction | null>(null);
 const appReportCopied = ref(false);
 const safeReportCopied = ref(false);
-const selectedPackages = ref<string[]>([]);
-const recommendedBypass = ref<string[]>([]);
 
 type PendingAppAction = {
   key: string;
@@ -35,18 +32,10 @@ type PendingAppAction = {
   plan: AppPolicyChangePlan;
   run: () => Promise<void>;
 };
-type AppTarget = "proxy" | "direct" | "bypass";
-
-const recycledBypass = computed(() => {
-  const active = new Set(state.appPolicy.bypass);
-  return removedBypass.value.filter((pkg) => !active.has(pkg));
-});
+type AppTarget = "proxy" | "direct";
 
 const installedNames = computed(() => new Set(state.packages.map((item) => item.packageName)));
 
-const filteredPackages = computed(() => {
-  return filterVisiblePackages(state.packages, state.packageQuery, 120);
-});
 const packageIconsAvailable = devicePackageIconsAvailable();
 const appIcon = (packageName: string): string | null =>
   packageIconUrl(packageName, packageIconsAvailable);
@@ -57,28 +46,22 @@ const installedLabels = computed(() => {
 });
 const packageLabel = (packageName: string): string =>
   installedLabels.value.get(packageName) ?? packageName;
-const visiblePackageNames = computed(() => filteredPackages.value.map((app) => app.packageName));
-const allVisibleSelected = computed(() => (
-  visiblePackageNames.value.length > 0
-  && visiblePackageNames.value.every((pkg) => selectedPackages.value.includes(pkg))
-));
 
-const availableRecommendedBypass = computed(() => {
-  const active = new Set([...state.appPolicy.proxy, ...state.appPolicy.direct, ...state.appPolicy.bypass]);
-  const installed = installedNames.value;
-  return recommendedBypass.value.filter((pkg) => {
-    if (active.has(pkg)) return false;
-    return installed.size === 0 || installed.has(pkg);
-  });
+/** 过滤掉已经在任意名单中的应用 */
+const packagesNotListed = computed(() => {
+  const listed = new Set([
+    ...state.appPolicy.proxy,
+    ...state.appPolicy.direct,
+    ...state.appPolicy.bypass,
+  ]);
+  return state.packages.filter((pkg) => !listed.has(pkg.packageName));
 });
 
 const policySummary = computed(() => buildAppPolicySummary(
   state.appPolicy.mode,
   state.appPolicy.proxy,
   state.appPolicy.direct,
-  state.appPolicy.bypass,
   installedNames.value,
-  availableRecommendedBypass.value.length
 ));
 
 function actionPlan(operation: AppPolicyChangeOperation): AppPolicyChangePlan {
@@ -86,21 +69,13 @@ function actionPlan(operation: AppPolicyChangeOperation): AppPolicyChangePlan {
     mode: state.appPolicy.mode,
     proxy: state.appPolicy.proxy,
     direct: state.appPolicy.direct,
-    bypass: state.appPolicy.bypass,
+    bypass: [],
     installedPackages: installedNames.value
   }, operation);
 }
 
 function commandFailed(text: string): boolean {
   return execFailed(text);
-}
-
-function rememberRemovedBypass(pkg: string): void {
-  removedBypass.value = [pkg, ...removedBypass.value.filter((item) => item !== pkg)].slice(0, 24);
-}
-
-function forgetRemovedBypass(pkg: string): void {
-  removedBypass.value = removedBypass.value.filter((item) => item !== pkg);
 }
 
 function targetList(target: AppTarget): string[] {
@@ -110,7 +85,6 @@ function targetList(target: AppTarget): string[] {
 function moveLocalPackage(pkg: string, target: AppTarget): void {
   state.appPolicy.proxy = state.appPolicy.proxy.filter((item) => item !== pkg);
   state.appPolicy.direct = state.appPolicy.direct.filter((item) => item !== pkg);
-  state.appPolicy.bypass = state.appPolicy.bypass.filter((item) => item !== pkg);
   targetList(target).push(pkg);
 }
 
