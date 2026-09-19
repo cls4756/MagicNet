@@ -61,6 +61,9 @@ There are two ways to publish after review:
   the next release. An optional second line, `prerelease=true`, requests a
   prerelease. Single-line version markers remain supported; the previous `patch`
   marker is no longer supported.
+  A push that rewrote `main` (amend or rebase) has no comparable previous tip in
+  the checkout, so the workflow warns and stays build-only instead of guessing a
+  release from an unverifiable range.
 - Merge the version PR, then dispatch `exec.yml` on `main` with `release=true`.
   Set `prerelease=true` to mark a manually requested release as a prerelease.
   Keep `bump=none`; the committed version tag must not already exist.

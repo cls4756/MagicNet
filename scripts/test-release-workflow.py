@@ -287,6 +287,14 @@ class ReleaseWorkflowTest(unittest.TestCase):
         self.commit("README.md", "Ordinary change after the release.\n")
         self.assert_build_only(self.run_workflow())
 
+    def test_rewritten_main_does_not_guess_a_release(self):
+        self.commit(".github/release-request", "v1.2.3\n")
+        for before in ("1" * 40, "0" * 40):
+            with self.subTest(before=before):
+                result = self.run_workflow(PUSH_BEFORE=before)
+                self.assert_build_only(result)
+                self.assertIn("could not be compared", result.stdout)
+
     def test_resubmitted_marker_retries_an_unpublished_version(self):
         self.before = self.commit(RELEASE_MARKER, "v1.2.3\n")
         self.commit(RELEASE_MARKER, "v1.2.3")

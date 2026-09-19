@@ -37,6 +37,21 @@ def release_commit():
     return os.environ.get("RELEASE_COMMIT_SHA") or os.environ["GITHUB_SHA"]
 
 
+def push_before():
+    """Return the previous main tip, or None when this push cannot be compared.
+
+    A force push rewrites main, so the reported before commit is not an
+    ancestor of the pushed commit and the by-SHA checkout does not contain it.
+    """
+    before = (os.environ.get("PUSH_BEFORE") or "").strip()
+    if not re.fullmatch(r"[0-9a-f]{40}", before) or before == "0" * 40:
+        return None
+    try:
+        return git("rev-parse", "--verify", "--quiet", f"{before}^{{commit}}")
+    except subprocess.CalledProcessError:
+        return None
+
+
 def require_main_checkout():
     if os.environ.get("GITHUB_REF") != "refs/heads/main":
         raise ValueError("Releases must use main")
@@ -154,9 +169,18 @@ def prepare():
         raise ValueError("prerelease requires release=true")
     marker = Path(".github/release-request")
     if event == "push" and ref == "refs/heads/main" and marker.exists():
-        changed = git("diff", "--name-only", os.environ["PUSH_BEFORE"],
-                      os.environ["GITHUB_SHA"], "--", str(marker))
-        if changed:
+        before = push_before()
+        if before is None:
+            # The pushed range is unknown, so a request in the committed tree
+            # may or may not have been introduced here. Never guess a release
+            # from an unverifiable range: report it and stay build-only.
+            print("::warning::This push rewrote main, so the previous tip is "
+                  "missing from the checkout and the release request could not "
+                  "be compared. Build only. Update .github/release-request or "
+                  "dispatch this workflow with release=true to publish "
+                  "deliberately.")
+        elif git("diff", "--name-only", before, os.environ["GITHUB_SHA"],
+                 "--", str(marker)):
             request = marker.read_text().strip().splitlines()
             if not request or request[0] != version:
                 raise ValueError("Release request must equal the committed module version")

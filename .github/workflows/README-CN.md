@@ -57,6 +57,8 @@ kam check
   不会重复请求发布。发布下一版时，将它更新为下一版的精确版本号。
   预发布可增加第二行 `prerelease=true`；省略时为正式发布。
   旧的单行版本标记继续兼容，旧的 `patch` 标记不再支持。
+  改写 `main` 的 push（amend 或 rebase）在 checkout 中没有可比较的旧提交，
+  此时工作流会给出警告并只构建，不会按无法核实的范围猜测发布。
 - 合并版本 PR 后，在 `main` 上手动运行 `exec.yml`，选择 `release=true`。
   手动发布时可选择 `prerelease=true`，将 Release 标记为预发布。
   此时 `bump` 保持 `none`，且当前版本标签必须尚不存在。
