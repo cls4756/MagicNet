@@ -286,7 +286,7 @@ assert.match(
   /const issueMetadata = redactSensitiveText\(panel\.value\.metadata\.trim\(\)\) \|\| "\(empty\)";/,
 );
 assert.match(webuiSource, /`Name: \$\{issueName\}`,/);
-assert.match(webuiSource, /\n    issueMetadata,\n/);
+assert.match(webuiSource, /\r?\n\s*issueMetadata,\r?\n/);
 assert.match(webuiSource, /title: t\("申请适配 WebUI 面板：\{value\}", \{ value: issueName \}\)/);
 assert.match(subscriptionsSource, /startPrivateBackgroundCli/);
 assert.match(installPlanSource, /isSensitiveExternalUrl\(url\)/);
@@ -342,7 +342,6 @@ assert.match(
 for (const [source, preview] of [
   [diagnosticsSource, "support bundle [private-output]"],
   [blocklistSource, "block add-domain [domain]"],
-  [appsSource, "app add [package] bypass"],
   [outputSource, "refresh background log [private-output]"],
   [toolsSource, "refresh tools [private-output]"],
   [warpRoutesSource, "route list [private-output]"],
@@ -354,6 +353,9 @@ for (const [source, preview] of [
     ),
   );
 }
+// AppsPage uses template-literal redactedCliPreview calls with ${target} interpolation.
+assert.match(appsSource, /redactedCliPreview\(`app add \[package\] \$\{target\}`\)/);
+assert.match(appsSource, /redactedCliPreview\(`app remove \[package\] \$\{target\}`\)/);
 assert.match(
   magicnetSource,
   /config-editor get \$\{target\}[\s\S]*redactedCliPreview\(`config-editor get \$\{target\} \[private-output\]`\)/,
