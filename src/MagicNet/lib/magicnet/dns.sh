@@ -107,18 +107,33 @@ magicnet_dns_apply_singbox() {
       def provider_for($profile):
         if $profile == "default" then {tag_prefix:"bootstrap-local-dns",via_proxy:false}
         elif ($profile | startswith("cloudflare")) then
-          {tag_prefix:"cloudflare",primary:"1.1.1.1",secondary:"1.0.0.1",sni:"cloudflare-dns.com",via_proxy:($profile | endswith("-direct") | not)}
+          {tag_prefix:"cloudflare",primary:"1.1.1.1",secondary:"1.0.0.1",sni:"cloudflare-dns.com",via_proxy:($via_proxy == 1 and ($profile | endswith("-direct") | not))}
         elif ($profile | startswith("google")) then
-          {tag_prefix:"google",primary:"8.8.8.8",secondary:"8.8.4.4",sni:"dns.google",via_proxy:($profile | endswith("-direct") | not)}
+          {tag_prefix:"google",primary:"8.8.8.8",secondary:"8.8.4.4",sni:"dns.google",via_proxy:($via_proxy == 1 and ($profile | endswith("-direct") | not))}
         elif ($profile | startswith("adguard")) then
-          {tag_prefix:"adguard",primary:"94.140.14.14",secondary:"",sni:"dns.adguard-dns.com",via_proxy:($profile | endswith("-direct") | not)}
+          {tag_prefix:"adguard",primary:"94.140.14.14",secondary:"",sni:"dns.adguard-dns.com",via_proxy:($via_proxy == 1 and ($profile | endswith("-direct") | not))}
         elif ($profile | startswith("quad9")) then
-          {tag_prefix:"quad9",primary:"9.9.9.9",secondary:"149.112.112.112",sni:"dns.quad9.net",via_proxy:($profile | endswith("-direct") | not)}
+          {tag_prefix:"quad9",primary:"9.9.9.9",secondary:"149.112.112.112",sni:"dns.quad9.net",via_proxy:($via_proxy == 1 and ($profile | endswith("-direct") | not))}
         else {tag_prefix:"bootstrap-local-dns",via_proxy:false} end;
+      # These tags are template-owned DNS policy aliases. Rewrite their rule
+      # references to the selected profile so a profile change is global for
+      # application DNS instead of only changing dns.final.
+      def managed_server_tags:
+        ["bootstrap-local-dns","default-remote-dns","doh-cloudflare","doh-google",
+         "cloudflare-profile-dns","cloudflare-backup-dns",
+         "google-profile-dns","google-backup-dns","adguard-profile-dns","adguard-backup-dns",
+         "quad9-profile-dns","quad9-backup-dns"];
+      def rewrite_rule_tags:
+        ["default-remote-dns","doh-cloudflare","doh-google",
+         "cloudflare-profile-dns","cloudflare-backup-dns","google-profile-dns","google-backup-dns",
+         "adguard-profile-dns","adguard-backup-dns","quad9-profile-dns","quad9-backup-dns"];
+      def profile_dns_tag:
+        if $profile == "default" then "bootstrap-local-dns"
+        else (provider_for($profile)).tag_prefix + "-profile-dns" end;
       # Resolve which transport to use based on profile suffix
       def transport_for($profile):
-        if ($profile | endswith("-udp")) or ($profile == "cloudflare-udp") then "udp"
-        elif ($profile | endswith("-dot")) or ($profile == "cloudflare-dot") then "tls"
+        if ($profile | endswith("-udp")) or ($profile | endswith("-udp-direct")) then "udp"
+        elif ($profile | endswith("-dot")) or ($profile | endswith("-dot-direct")) then "tls"
         else "https"
         end;
       def server_tags_for($provider):
@@ -128,9 +143,7 @@ magicnet_dns_apply_singbox() {
         elif $transport == "tls" then make_tls($tag; $server; $provider.sni; $provider.via_proxy)
         else make_https($tag; $server; "/dns-query"; $provider.sni; $provider.via_proxy) end;
       def managed_tags:
-        ["bootstrap-local-dns","cloudflare-profile-dns","cloudflare-backup-dns",
-         "google-profile-dns","google-backup-dns","adguard-profile-dns","adguard-backup-dns",
-         "quad9-profile-dns","quad9-backup-dns"];
+        managed_server_tags;
       def default_bootstrap:
         {"type":"https","tag":"bootstrap-local-dns","server":$bootstrap_server,"server_port":443,"path":"/dns-query","headers":{"Host":"dns.alidns.com"},"tls":{"server_name":"dns.alidns.com"}};
       .dns.servers = (
@@ -155,8 +168,15 @@ magicnet_dns_apply_singbox() {
           else .
           end
         )
-      | if $profile == "default" then .dns.final = "bootstrap-local-dns"
-        else .dns.final = ((provider_for($profile)).tag_prefix + "-profile-dns") end
+      | .dns.rules = ((.dns.rules // []) | map(
+          if ((.server // "") as $server | rewrite_rule_tags | index($server)) != null
+          then .server = profile_dns_tag
+          else .
+          end
+        ))
+      # route.default_domain_resolver remains bootstrap-local-dns for proxy
+      # node hostnames; using a proxy-detoured profile there would recurse.
+      | .dns.final = profile_dns_tag
       # sing-box 1.14 adds per-query timeout, optimistic DNS caching and DNS
       # cache persistence. Apply conservative defaults only when the user has
       # not made an explicit choice. A disabled cache remains disabled.

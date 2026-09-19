@@ -35,6 +35,12 @@ cat >"$MODDIR/.config/sing-box/config.json" <<'EOF'
       {"type": "https", "tag": "cloudflare-backup-dns", "server": "1.0.0.1"},
       {"type": "https", "tag": "doh-cloudflare", "server": "1.1.1.1", "detour": "proxy"},
       {"type": "udp", "tag": "retained-udp", "server": "9.9.9.9"}
+    ],
+    "rules": [
+      {"clash_mode": "Global", "server": "doh-cloudflare"},
+      {"domain_suffix": ["cn"], "server": "bootstrap-local-dns"},
+      {"rule_set": ["foreign"], "server": "doh-google"},
+      {"domain_suffix": ["example.invalid"], "server": "retained-dns"}
     ]
   }
 }
@@ -58,6 +64,8 @@ assert_profile_uses_proxy_detour() {
         | select(.type == $expected_type and .detour == "proxy")
         | select((.server_port // 53) == $expected_port)] | length) == 2
         and .dns.final == ($tag_prefix + "-profile-dns")
+        and all(.dns.rules[]?; (.server == ($tag_prefix + "-profile-dns")) or (.server == "bootstrap-local-dns") or (.server == "retained-dns"))
+        and ([.dns.servers[] | select(.tag == "doh-cloudflare" or .tag == "doh-google")] | length) == 0
         and ([.dns.servers[] | select(.tag == "bootstrap-local-dns")
           | .type == "https" and .server == "223.5.5.5" and has("detour") | not] | length) == 1
     ' "$MODDIR/.config/sing-box/config.json" >/dev/null || {
@@ -82,11 +90,13 @@ assert_profile_direct_only() {
         | select(.type == $expected_type and (.detour // "") == "")
         | select((.server_port // 53) == $expected_port)] | length) == 2
         and .dns.final == ($tag_prefix + "-profile-dns")
+        and all(.dns.rules[]?; (.server == ($tag_prefix + "-profile-dns")) or (.server == "bootstrap-local-dns") or (.server == "retained-dns"))
+        and ([.dns.servers[] | select(.tag == "doh-cloudflare" or .tag == "doh-google")] | length) == 0
         and ([.dns.servers[]
           | select(.tag == ($tag_prefix + "-profile-dns") or .tag == ($tag_prefix + "-backup-dns"))
-          | select(.type == "udp") | .routing_mark == $mark] | length) == 1
+          | select(.type == "udp") | .routing_mark == $mark] | length) == (if $expected_type == "udp" then 2 else 0 end)
         and ([.dns.servers[] | select(.tag == "bootstrap-local-dns")
-          | .type == "https" and .server == "223.5.5.5" and has("detour") | not] | length) == 1
+          | .type == "https" and (has("detour") | not)] | length) == 1
     ' "$MODDIR/.config/sing-box/config.json" >/dev/null || {
     printf 'DNS profile %s must contact servers directly without proxy detour\n' "$profile" >&2
     exit 1
@@ -101,6 +111,16 @@ assert_profile_uses_proxy_detour google-dot tls 853 google
 assert_profile_uses_proxy_detour adguard-doh https 443 adguard
 assert_profile_uses_proxy_detour quad9-doh https 443 quad9
 
+MAGICNET_DNS_VIA_PROXY=0 MAGICNET_DNS_PROFILE=cloudflare-doh magicnet_dns_apply_singbox
+jq -e '
+  ([.dns.servers[]
+    | select(.tag == "cloudflare-profile-dns" or .tag == "cloudflare-backup-dns")
+    | select((.detour // "") == "" and .type == "https")] | length) == 2
+' "$MODDIR/.config/sing-box/config.json" >/dev/null || {
+  printf 'MAGICNET_DNS_VIA_PROXY=0 must force profile DNS direct\n' >&2
+  exit 1
+}
+
 # -direct profiles must NOT use proxy detour — they contact servers directly.
 assert_profile_direct_only cloudflare-udp-direct udp 53 cloudflare
 assert_profile_direct_only cloudflare-dot-direct tls 853 cloudflare
@@ -110,10 +130,27 @@ assert_profile_direct_only google-dot-direct tls 853 google
 assert_profile_direct_only adguard-doh-direct https 443 adguard
 assert_profile_direct_only quad9-doh-direct https 443 quad9
 
+for direct_profile in cloudflare-udp-direct; do
+  MAGICNET_DNS_PROFILE="$direct_profile" magicnet_dns_apply_singbox
+  jq -e --arg direct_profile "$direct_profile" '
+    (if ($direct_profile | startswith("cloudflare")) then "cloudflare" else "google" end) as $tag_prefix
+    | ([.dns.servers[]
+        | select(.tag == ($tag_prefix + "-profile-dns") or .tag == ($tag_prefix + "-backup-dns"))
+        | select(.type == "udp" and (.detour // "") == "")]
+       | length) == 2
+    and .dns.final == ($tag_prefix + "-profile-dns")
+  ' "$MODDIR/.config/sing-box/config.json" >/dev/null || {
+    printf 'DNS profile %s must preserve UDP transport when direct\n' "$direct_profile" >&2
+    exit 1
+  }
+done
+
 MAGICNET_DNS_PROFILE=default magicnet_dns_apply_singbox
 jq -e '
   .dns.final == "bootstrap-local-dns"
     and ([.dns.servers[] | select(.tag == "cloudflare-profile-dns" or .tag == "cloudflare-backup-dns")] | length) == 0
+    and ([.dns.servers[] | select(.tag == "doh-cloudflare" or .tag == "doh-google")] | length) == 0
+    and all(.dns.rules[]?; (.server == "bootstrap-local-dns") or (.server == "retained-dns"))
     and ([.dns.servers[] | select(.tag == "retained-udp") | .routing_mark] == [1073741824])
     and .dns.timeout == "8s"
     and .dns.cache_capacity == 4096
