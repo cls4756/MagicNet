@@ -152,9 +152,8 @@ test("device metadata enriches CLI rows without reordering or inventing entries"
 
 test("the apps page renders names and icons and searches by both", () => {
   const page = readFileSync(new URL("./src/components/pages/AppsPage.vue", import.meta.url), "utf8");
-  assert.match(page, /appIcon\(app\.packageName\)/);
-  assert.match(page, /packageDisplayName\(app\)/);
-  assert.match(page, /packageInitial\(app\)/);
-  assert.match(page, /packageLabel\(pkg\)/, "already selected apps must show their name too");
+  assert.match(page, /appIcon\(app\.info\.packageName\)/);
+  assert.match(page, /packageDisplayName\(app\.info\)/);
+  assert.match(page, /app\.initial/);
   assert.match(page, /t\('搜索应用名称或包名'\)/);
 });

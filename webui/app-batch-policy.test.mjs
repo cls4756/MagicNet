@@ -9,18 +9,14 @@ const page = readFileSync(
   "utf8",
 );
 
-assert.match(page, /type="checkbox"[\s\S]*togglePackageSelection/);
-assert.match(page, /function selectVisiblePackages/);
-assert.match(page, /function requestBatchAdd/);
-assert.match(page, /app add-many \$\{target\} \$\{quoted\}/);
-assert.match(page, /pendingAppAction\.value = \{[\s\S]*批量归类/);
-assert.doesNotMatch(
-  page.match(
-    /async function applyBatchAdd[\s\S]*?\n}\n\nfunction requestBatchAdd/,
-  )?.[0] ?? "",
-  /\bfor\s*\([^)]*\)[\s\S]*await runCli/,
-  "batch classification must use one CLI transaction instead of restarting once per app",
-);
+// The apps page uses per-app checkboxes in searchable list boxes instead of
+// a batch-select + bulk-apply panel. Each checkbox toggles membership via
+// toggleAppList, which calls addPackage or removeApp directly.
+assert.match(page, /type="checkbox"[\s\S]*toggleAppList/);
+assert.doesNotMatch(page, /function selectVisiblePackages/);
+assert.doesNotMatch(page, /function requestBatchAdd/);
+assert.doesNotMatch(page, /applyBatchAdd/);
+assert.doesNotMatch(page, /togglePackageSelection/);
 
 // Execute the shipped handler, not a reimplementation of its async ownership.
 const script = page.match(/<script setup lang="ts">([\s\S]*?)<\/script>/)?.[1];

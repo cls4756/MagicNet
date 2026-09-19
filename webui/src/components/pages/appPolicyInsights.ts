@@ -15,7 +15,6 @@ export type AppPolicySummary = {
   conflicts: string[];
   installedProxy: string[];
   installedDirect: string[];
-  installedBypass: string[];
 };
 
 export type AppPolicySafeReportInput = {
@@ -50,7 +49,6 @@ export function buildAppPolicySummary(
     conflicts,
     installedProxy,
     installedDirect,
-    installedBypass: [] as string[],
     items: [
       insight(t('Proxy 强制'), t('{count} 个', { count: proxy.length }), proxy.length ? "success" : "neutral"),
       insight(t('Direct 直连'), t('{count} 个', { count: direct.length }), direct.length ? "success" : "neutral"),
