@@ -64,7 +64,6 @@ const consumers = {
   "src/components/pages/AppsPage.vue": [
     "ConfirmPanel",
     "InsightChip",
-    "RemovableTag",
     "SearchField",
   ],
   "src/components/pages/BlocklistPage.vue": [
