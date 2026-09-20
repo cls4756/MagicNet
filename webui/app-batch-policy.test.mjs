@@ -9,14 +9,24 @@ const page = readFileSync(
   "utf8",
 );
 
-// The apps page uses per-app checkboxes in searchable list boxes instead of
-// a batch-select + bulk-apply panel. Each checkbox toggles membership via
-// toggleAppList, which calls addPackage or removeApp directly.
-assert.match(page, /type="checkbox"[\s\S]*toggleAppList/);
-assert.doesNotMatch(page, /function selectVisiblePackages/);
-assert.doesNotMatch(page, /function requestBatchAdd/);
-assert.doesNotMatch(page, /applyBatchAdd/);
-assert.doesNotMatch(page, /togglePackageSelection/);
+// A checkbox only edits a local draft. The proxy and direct lists are written
+// once per apply, through a single `app sync` call, so a multi-row edit costs
+// one core restart instead of one restart per toggled row.
+assert.match(page, /type="checkbox"[\s\S]*toggleApp\(/);
+assert.match(page, /function applyPendingLists/);
+assert.match(page, /`app sync \$\{shellQuote\(payload\)\}`/);
+assert.doesNotMatch(page, /app add /);
+assert.doesNotMatch(page, /app remove /);
+assert.doesNotMatch(page, /requestRemoveApp/);
+assert.doesNotMatch(page, /勾选加入/);
+
+// The list boxes must actually read as lists: bounded height, scrolling, border.
+assert.match(
+  page,
+  /max-h-80 overflow-y-auto overscroll-contain rounded-\[var\(--mn-radius-md\)\] border border-\[var\(--mn-border\)\]/,
+);
+assert.match(page, /<ul class="divide-y/);
+assert.match(page, /pendingCount \? `\$\{t\('应用更改'\)\} \(\$\{pendingCount\}\)` : t\('应用更改'\)/);
 
 // Execute the shipped handler, not a reimplementation of its async ownership.
 const script = page.match(/<script setup lang="ts">([\s\S]*?)<\/script>/)?.[1];

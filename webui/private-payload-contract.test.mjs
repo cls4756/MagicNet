@@ -353,9 +353,8 @@ for (const [source, preview] of [
     ),
   );
 }
-// AppsPage uses template-literal redactedCliPreview calls with ${target} interpolation.
-assert.match(appsSource, /redactedCliPreview\(`app add \[package\] \$\{target\}`\)/);
-assert.match(appsSource, /redactedCliPreview\(`app remove \[package\] \$\{target\}`\)/);
+// AppsPage applies the whole draft through one redacted batch command.
+assert.match(appsSource, /redactedCliPreview\("app sync \[payload\]"\)/);
 assert.match(
   magicnetSource,
   /config-editor get \$\{target\}[\s\S]*redactedCliPreview\(`config-editor get \$\{target\} \[private-output\]`\)/,

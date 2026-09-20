@@ -106,6 +106,19 @@ export function filterVisiblePackages(
   return visible;
 }
 
+/**
+ * Applied entries come first inside a list box; everything else keeps a stable
+ * alphabetical order so a freshly checked row does not jump to the top before
+ * the change is written to the device.
+ */
+export function comparePackagesByLabel(a: PackageInfo, b: PackageInfo): number {
+  const byLabel = packageDisplayName(a).localeCompare(packageDisplayName(b), undefined, {
+    sensitivity: "base",
+  });
+  if (byLabel !== 0) return byLabel;
+  return a.packageName.localeCompare(b.packageName);
+}
+
 /** Fallback badge for apps whose icon the manager cannot serve. */
 export function packageInitial(app: PackageInfo): string {
   const label = packageDisplayName(app).trim();

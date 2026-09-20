@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { t } from "@/i18n";
-import { Copy, ListFilter, RefreshCw } from "lucide-vue-next";
+import { RefreshCw } from "lucide-vue-next";
 
 import { computed, onMounted, ref } from "vue";
 import Button from "@/components/ui/Button.vue";
@@ -12,18 +12,28 @@ import SearchField from "@/components/ui/SearchField.vue";
 import { useActionLock } from "@/composables/useActionLock";
 import { devicePackageIconsAvailable } from "@/composables/devicePackages";
 import { useMagicNet } from "@/composables/useMagicNet";
-import { copyText, execFailed, redactedCliPreview } from "@/utils";
+import { bytesToBase64, execFailed, redactedCliPreview } from "@/utils";
 import AppPolicyRouteGuide from "./AppPolicyRouteGuide.vue";
-import { packageDisplayName, packageIconUrl, packageInitial } from "./appPackageList";
+import { comparePackagesByLabel, packageDisplayName, packageIconUrl, packageInitial } from "./appPackageList";
+import {
+  appPolicyListDeltas,
+  appPolicyPendingCount,
+  appPolicySyncPayload,
+  isAppPolicyTargetSelected,
+  normalizeAppPolicyLists,
+  sameAppPolicyLists,
+  toggleAppPolicyTarget,
+  type AppPolicyLists,
+  type AppPolicyTarget,
+} from "./appPolicyDraft";
 import type { PackageInfo } from "@/types";
-import { buildAppPolicySummary, formatAppPolicyFullReport, formatAppPolicySafeReport } from "./appPolicyInsights";
+import { buildAppPolicySummary } from "./appPolicyInsights";
 import { buildAppPolicyChangePlan, type AppPolicyChangeOperation, type AppPolicyChangePlan } from "./appPolicyChangePlan";
 
 const { state, runCli, refreshApps, refreshPackages, shellQuote } = useMagicNet();
 const { isRunning, withAction } = useActionLock();
 const pendingAppAction = ref<PendingAppAction | null>(null);
-const appReportCopied = ref(false);
-const safeReportCopied = ref(false);
+const pendingLists = ref<AppPolicyLists | null>(null);
 const proxySearchQuery = ref("");
 const directSearchQuery = ref("");
 
@@ -34,7 +44,6 @@ type PendingAppAction = {
   plan: AppPolicyChangePlan;
   run: () => Promise<void>;
 };
-type AppTarget = "proxy" | "direct";
 
 const installedNames = computed(() => new Set(state.packages.map((item) => item.packageName)));
 
@@ -44,29 +53,32 @@ const appIcon = (packageName: string): string | null =>
 
 type ListApp = {
   info: PackageInfo;
-  inList: boolean;
   initial: string;
 };
 
-function buildListApps(target: AppTarget, searchQuery: string): ListApp[] {
-  const list = new Set(state.appPolicy[target]);
+/** Device state as last read. Checkbox edits only overlay it until they apply. */
+const appliedLists = computed<AppPolicyLists>(() =>
+  normalizeAppPolicyLists(state.appPolicy.proxy, state.appPolicy.direct));
+
+const draftLists = computed<AppPolicyLists>(() => pendingLists.value ?? appliedLists.value);
+const pendingCount = computed(() =>
+  pendingLists.value ? appPolicyPendingCount(appliedLists.value, pendingLists.value) : 0);
+
+/** Applied entries first, then a stable alphabetical order; the draft never reorders rows. */
+function buildListApps(target: AppPolicyTarget, searchQuery: string): ListApp[] {
+  const applied = new Set(state.appPolicy[target]);
   const needle = searchQuery.trim().toLowerCase();
-  const filtered = state.packages.filter((app) => {
-    if (!needle) return true;
-    return app.packageName.toLowerCase().includes(needle)
-      || packageDisplayName(app).toLowerCase().includes(needle);
-  });
-  return filtered.sort((a, b) => {
-    const aInList = list.has(a.packageName);
-    const bInList = list.has(b.packageName);
-    if (aInList && !bInList) return -1;
-    if (!aInList && bInList) return 1;
-    return 0;
-  }).map((app): ListApp => ({
-    info: app,
-    inList: list.has(app.packageName),
-    initial: packageInitial(app),
-  }));
+  return state.packages
+    .filter((app) => !needle
+      || app.packageName.toLowerCase().includes(needle)
+      || packageDisplayName(app).toLowerCase().includes(needle))
+    .sort((a, b) => {
+      const aApplied = applied.has(a.packageName);
+      const bApplied = applied.has(b.packageName);
+      if (aApplied !== bApplied) return aApplied ? -1 : 1;
+      return comparePackagesByLabel(a, b);
+    })
+    .map((app): ListApp => ({ info: app, initial: packageInitial(app) }));
 }
 
 const proxyListApps = computed(() => buildListApps("proxy", proxySearchQuery.value));
@@ -93,79 +105,49 @@ function commandFailed(text: string): boolean {
   return execFailed(text);
 }
 
-function targetList(target: AppTarget): string[] {
-  return state.appPolicy[target];
+function isSelected(pkg: string, target: AppPolicyTarget): boolean {
+  return isAppPolicyTargetSelected(draftLists.value, target, pkg);
 }
 
-function moveLocalPackage(pkg: string, target: AppTarget): void {
-  state.appPolicy.proxy = state.appPolicy.proxy.filter((item) => item !== pkg);
-  state.appPolicy.direct = state.appPolicy.direct.filter((item) => item !== pkg);
-  targetList(target).push(pkg);
+function isPending(pkg: string, target: AppPolicyTarget): boolean {
+  if (!pendingLists.value) return false;
+  return isSelected(pkg, target) !== state.appPolicy[target].includes(pkg);
 }
 
-function isInAppList(pkg: string, target: AppTarget): boolean {
-  return state.appPolicy[target].includes(pkg);
+function toggleApp(pkg: string, target: AppPolicyTarget): void {
+  const next = toggleAppPolicyTarget(draftLists.value, target, pkg);
+  pendingLists.value = sameAppPolicyLists(next, appliedLists.value) ? null : next;
 }
 
-async function toggleAppList(pkg: string, target: AppTarget): Promise<void> {
-  if (isInAppList(pkg, target)) {
-    await removeApp(pkg, target);
-  } else {
-    await addPackage(pkg, target);
-  }
-}
-
-async function addPackage(pkg: string, target: AppTarget, key = `add-${target}`): Promise<void> {
-  await withAction(key, async () => {
+async function applyPendingLists(): Promise<void> {
+  const draft = pendingLists.value;
+  if (!draft) return;
+  const deltas = appPolicyListDeltas(appliedLists.value, draft);
+  if (!deltas.length) return;
+  const changed = deltas.reduce((total, delta) => total + delta.added.length + delta.removed.length, 0);
+  await withAction("apply-app-lists", async () => {
     const previousProxy = [...state.appPolicy.proxy];
     const previousDirect = [...state.appPolicy.direct];
-    moveLocalPackage(pkg, target);
-    state.output = t('已加入界面，正在保存 {pkg}...', { pkg: pkg });
+    state.output = t('正在应用名单更改（{count} 项）...', { count: changed });
+    const payload = bytesToBase64(new TextEncoder().encode(appPolicySyncPayload(deltas)));
     const text = await runCli(
-      `app add ${shellQuote(pkg)} ${target}`,
-      t('添加应用 {pkg}', { pkg: pkg }),
+      `app sync ${shellQuote(payload)}`,
+      t('应用名单更改'),
       true,
-      redactedCliPreview(`app add [package] ${target}`),
+      redactedCliPreview("app sync [payload]"),
     );
     if (commandFailed(text)) {
+      // Keep the draft so the user can fix and retry without re-checking rows.
       state.output = text;
+      return;
+    }
+    pendingLists.value = null;
+    if (!(await refreshApps(true))) {
       state.appPolicy.proxy = previousProxy;
       state.appPolicy.direct = previousDirect;
       return;
     }
-    if (!(await refreshApps(true))) {
-      state.appPolicy.proxy = previousProxy;
-      state.appPolicy.direct = previousDirect;
-    }
-  });
-}
-
-async function removeApp(pkg: string, target: AppTarget): Promise<void> {
-  await withAction(`remove-${target}-${pkg}`, async () => {
-    const previousProxy = [...state.appPolicy.proxy];
-    const previousDirect = [...state.appPolicy.direct];
-    if (target === "proxy") {
-      state.appPolicy.proxy = state.appPolicy.proxy.filter((item) => item !== pkg);
-    } else if (target === "direct") {
-      state.appPolicy.direct = state.appPolicy.direct.filter((item) => item !== pkg);
-    }
-    state.output = t('已从界面移除 {pkg}，正在后台保存...', { pkg: pkg });
-    const text = await runCli(
-      `app remove ${shellQuote(pkg)} ${target}`,
-      t('移除应用 {pkg}', { pkg: pkg }),
-      true,
-      redactedCliPreview(`app remove [package] ${target}`),
-    );
-    if (commandFailed(text)) {
-      state.output = text;
-      state.appPolicy.proxy = previousProxy;
-      state.appPolicy.direct = previousDirect;
-      return;
-    }
-    if (!(await refreshApps(true))) {
-      state.appPolicy.proxy = previousProxy;
-      state.appPolicy.direct = previousDirect;
-    }
+    state.output = t('已应用名单更改，当前核心已重启。');
   });
 }
 
@@ -207,38 +189,14 @@ function requestSetMode(mode: "blacklist" | "whitelist"): void {
   };
 }
 
-async function searchPackages(): Promise<void> {
-  await withAction("search-packages", () => refreshPackages());
-}
-
-async function copyAppPolicyReport(): Promise<void> {
-  appReportCopied.value = await copyText(formatAppPolicyFullReport({
-    mode: state.appPolicy.mode,
-    proxy: state.appPolicy.proxy,
-    direct: state.appPolicy.direct,
-    summary: policySummary.value
-  }));
-  state.output = appReportCopied.value ? t('应用策略完整快照已复制。') : t('剪贴板不可用，应用策略快照未复制。');
-}
-
-async function copyAppPolicySafeReport(): Promise<void> {
-  safeReportCopied.value = await copyText(formatAppPolicySafeReport({
-    mode: state.appPolicy.mode,
-    proxy: state.appPolicy.proxy,
-    direct: state.appPolicy.direct,
-    summary: policySummary.value
-  }));
-  state.output = safeReportCopied.value ? t('应用策略隐私摘要已复制。') : t('剪贴板不可用，应用策略摘要未复制。');
-}
-
-function requestRemoveApp(pkg: string, target: AppTarget): void {
-  pendingAppAction.value = {
-    key: `remove-${target}-${pkg}`,
-    command: `app remove ${pkg} ${target}`,
-    message: t('确认从 {target} 名单移除 {pkg}？', { target: target, pkg: pkg }),
-    plan: actionPlan({ type: "remove", target, packages: [pkg] }),
-    run: () => removeApp(pkg, target)
-  };
+/** One button: re-read the device lists, the installed package catalog, and drop the draft. */
+async function refreshAppList(): Promise<void> {
+  await withAction("refresh-app-list", async () => {
+    // The device state becomes the source of truth again, so any unapplied edits are discarded.
+    pendingLists.value = null;
+    await refreshApps();
+    await refreshPackages();
+  });
 }
 
 function cancelAppAction(): void {
@@ -259,19 +217,7 @@ onMounted(() => {
 </script>
 <template>
   <div class="grid gap-4">
-    <PageHeader :overline="t('应用策略')" :title="t('应用名单')">
-      <div class="flex flex-wrap gap-2">
-        <Button variant="outline" :loading="isRunning('refresh-apps')" @click="withAction('refresh-apps', () => refreshApps())"><RefreshCw :size="17" />{{ t('读取名单') }}</Button>
-        <Button variant="outline" :loading="isRunning('search-packages')" @click="searchPackages"><ListFilter :size="17" />{{ t('刷新应用') }}</Button>
-        <details class="config-action-menu">
-          <summary>{{ t('更多') }}</summary>
-          <div>
-            <Button variant="outline" :loading="isRunning('copy-app-policy-report')" @click="withAction('copy-app-policy-report', copyAppPolicyReport)"><Copy :size="17" />{{ appReportCopied ? t('已复制快照') : t('复制完整快照') }}</Button>
-            <Button variant="outline" :loading="isRunning('copy-app-policy-safe-report')" @click="withAction('copy-app-policy-safe-report', copyAppPolicySafeReport)"><Copy :size="17" />{{ safeReportCopied ? t('已复制摘要') : t('复制隐私摘要') }}</Button>
-          </div>
-        </details>
-      </div>
-    </PageHeader>
+    <PageHeader :overline="t('应用策略')" :title="t('应用名单')" />
     <Teleport to="body">
       <Transition name="sheet">
         <div v-if="pendingAppAction" class="fixed inset-0 z-[70]" role="presentation">
@@ -356,81 +302,104 @@ onMounted(() => {
 
     <!-- Proxy list box -->
     <Card class="grid gap-3">
-      <h3 class="text-base font-medium">{{ t('代理名单') }}</h3>
-      <p class="text-sm leading-6 text-[var(--mn-ink-muted)]">{{ t('已选应用将强制走 proxy。') }}</p>
-      <SearchField v-model="proxySearchQuery" :placeholder="t('搜索应用名称或包名')" />
-      <div class="grid gap-px divide-y divide-[var(--mn-border)] overflow-auto">
-        <div
-          v-for="app in proxyListApps"
-          :key="app.info.packageName"
-          class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 py-2 sm:grid-cols-[minmax(0,1fr)_auto_auto]"
-        >
-          <label class="flex min-w-0 cursor-pointer items-center gap-2">
-            <input
-              type="checkbox"
-              class="size-4 shrink-0 accent-[var(--mn-cactus)]"
-              :checked="app.inList"
-              :aria-label="t('选择 {value}', { value: app.info.appLabel })"
-              @change="toggleAppList(app.info.packageName, 'proxy')"
-            >
-            <img
-              v-if="appIcon(app.info.packageName)"
-              :src="appIcon(app.info.packageName) ?? ''"
-              alt=""
-              class="size-8 shrink-0 rounded-md"
-              loading="lazy"
-              decoding="async"
-            >
-            <span v-else class="flex size-8 shrink-0 items-center justify-center rounded-md bg-[var(--mn-ivory)] text-xs font-medium text-[var(--mn-ink-muted)]" aria-hidden="true">{{ app.initial }}</span>
-            <span class="grid min-w-0 gap-0.5">
-              <span class="min-w-0 break-all text-sm text-[var(--mn-ink-soft)]">{{ packageDisplayName(app.info) }}</span>
-              <span v-if="packageDisplayName(app.info) !== app.info.packageName" class="min-w-0 break-all text-xs text-[var(--mn-ink-faint)]">{{ app.info.packageName }}</span>
-            </span>
-          </label>
-          <Button v-if="app.inList" size="sm" variant="outline" :loading="isRunning(`remove-proxy-${app.info.packageName}`)" @click="requestRemoveApp(app.info.packageName, 'proxy')">{{ t('移除') }}</Button>
-          <span v-else class="text-xs text-[var(--mn-ink-faint)]">{{ t('勾选加入') }}</span>
+      <div class="flex flex-wrap items-start justify-between gap-2">
+        <h3 class="self-center text-base font-medium">{{ t('代理名单') }}</h3>
+        <div class="flex flex-wrap items-center gap-2">
+          <Button variant="outline" :loading="isRunning('refresh-app-list')" @click="refreshAppList"><RefreshCw :size="17" />{{ t('刷新') }}</Button>
+          <Button
+            :disabled="!pendingCount"
+            :loading="isRunning('apply-app-lists')"
+            @click="applyPendingLists"
+          >{{ pendingCount ? `${t('应用更改')} (${pendingCount})` : t('应用更改') }}</Button>
         </div>
-        <em v-if="!proxyListApps.length" class="mn-empty">{{ state.packages.length ? t('没有匹配的应用。') : t('暂无应用，点“刷新应用”读取。') }}</em>
+      </div>
+      <p v-if="pendingCount" class="text-xs leading-5 text-[var(--mn-warning)]">
+        {{ t('勾选后点“应用更改”才会写入并重启当前核心；在此之前不影响设备。') }}
+      </p>
+      <SearchField v-model="proxySearchQuery" :placeholder="t('搜索应用名称或包名')" />
+      <div class="max-h-80 overflow-y-auto overscroll-contain rounded-[var(--mn-radius-md)] border border-[var(--mn-border)] bg-[var(--mn-surface-raised)]">
+        <ul class="divide-y divide-[var(--mn-border)]">
+          <li
+            v-for="app in proxyListApps"
+            :key="app.info.packageName"
+            class="px-3 py-2"
+            :class="{ 'bg-[color-mix(in_srgb,var(--mn-warning)_10%,transparent)]': isPending(app.info.packageName, 'proxy') }"
+          >
+            <label class="flex min-w-0 cursor-pointer items-center gap-2">
+              <input
+                type="checkbox"
+                class="size-4 shrink-0 accent-[var(--mn-cactus)]"
+                :checked="isSelected(app.info.packageName, 'proxy')"
+                :aria-label="t('选择 {value}', { value: app.info.appLabel })"
+                @change="toggleApp(app.info.packageName, 'proxy')"
+              >
+              <img
+                v-if="appIcon(app.info.packageName)"
+                :src="appIcon(app.info.packageName) ?? ''"
+                alt=""
+                class="size-8 shrink-0 rounded-md"
+                loading="lazy"
+                decoding="async"
+              >
+              <span v-else class="flex size-8 shrink-0 items-center justify-center rounded-md bg-[var(--mn-ivory)] text-xs font-medium text-[var(--mn-ink-muted)]" aria-hidden="true">{{ app.initial }}</span>
+              <span class="grid min-w-0 gap-0.5">
+                <span class="min-w-0 break-all text-sm text-[var(--mn-ink-soft)]">{{ packageDisplayName(app.info) }}</span>
+                <span v-if="packageDisplayName(app.info) !== app.info.packageName" class="min-w-0 break-all text-xs text-[var(--mn-ink-faint)]">{{ app.info.packageName }}</span>
+              </span>
+            </label>
+          </li>
+        </ul>
+        <p v-if="!proxyListApps.length" class="mn-empty p-3">{{ state.packages.length ? t('没有匹配的应用。') : t('暂无应用，点“刷新”读取。') }}</p>
       </div>
     </Card>
 
     <!-- Direct list box -->
     <Card class="grid gap-3">
-      <h3 class="text-base font-medium">{{ t('MagicNet 内直连') }}</h3>
-      <p class="text-sm leading-6 text-[var(--mn-ink-muted)]">{{ t('已选应用在 MagicNet 内直连，直连仍经过 MagicNet。') }}</p>
-      <SearchField v-model="directSearchQuery" :placeholder="t('搜索应用名称或包名')" />
-      <div class="grid gap-px divide-y divide-[var(--mn-border)] overflow-auto">
-        <div
-          v-for="app in directListApps"
-          :key="app.info.packageName"
-          class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 py-2 sm:grid-cols-[minmax(0,1fr)_auto_auto]"
-        >
-          <label class="flex min-w-0 cursor-pointer items-center gap-2">
-            <input
-              type="checkbox"
-              class="size-4 shrink-0 accent-[var(--mn-cactus)]"
-              :checked="app.inList"
-              :aria-label="t('选择 {value}', { value: app.info.appLabel })"
-              @change="toggleAppList(app.info.packageName, 'direct')"
-            >
-            <img
-              v-if="appIcon(app.info.packageName)"
-              :src="appIcon(app.info.packageName) ?? ''"
-              alt=""
-              class="size-8 shrink-0 rounded-md"
-              loading="lazy"
-              decoding="async"
-            >
-            <span v-else class="flex size-8 shrink-0 items-center justify-center rounded-md bg-[var(--mn-ivory)] text-xs font-medium text-[var(--mn-ink-muted)]" aria-hidden="true">{{ app.initial }}</span>
-            <span class="grid min-w-0 gap-0.5">
-              <span class="min-w-0 break-all text-sm text-[var(--mn-ink-soft)]">{{ packageDisplayName(app.info) }}</span>
-              <span v-if="packageDisplayName(app.info) !== app.info.packageName" class="min-w-0 break-all text-xs text-[var(--mn-ink-faint)]">{{ app.info.packageName }}</span>
-            </span>
-          </label>
-          <Button v-if="app.inList" size="sm" variant="outline" :loading="isRunning(`remove-direct-${app.info.packageName}`)" @click="requestRemoveApp(app.info.packageName, 'direct')">{{ t('移除') }}</Button>
-          <span v-else class="text-xs text-[var(--mn-ink-faint)]">{{ t('勾选加入') }}</span>
+      <div class="flex flex-wrap items-start justify-between gap-2">
+        <h3 class="self-center text-base font-medium">{{ t('MagicNet 内直连') }}</h3>
+        <div class="flex flex-wrap items-center gap-2">
+          <Button variant="outline" :loading="isRunning('refresh-app-list')" @click="refreshAppList"><RefreshCw :size="17" />{{ t('刷新') }}</Button>
+          <Button
+            :disabled="!pendingCount"
+            :loading="isRunning('apply-app-lists')"
+            @click="applyPendingLists"
+          >{{ pendingCount ? `${t('应用更改')} (${pendingCount})` : t('应用更改') }}</Button>
         </div>
-        <em v-if="!directListApps.length" class="mn-empty">{{ state.packages.length ? t('没有匹配的应用。') : t('暂无应用，点“刷新应用”读取。') }}</em>
+      </div>
+      <SearchField v-model="directSearchQuery" :placeholder="t('搜索应用名称或包名')" />
+      <div class="max-h-80 overflow-y-auto overscroll-contain rounded-[var(--mn-radius-md)] border border-[var(--mn-border)] bg-[var(--mn-surface-raised)]">
+        <ul class="divide-y divide-[var(--mn-border)]">
+          <li
+            v-for="app in directListApps"
+            :key="app.info.packageName"
+            class="px-3 py-2"
+            :class="{ 'bg-[color-mix(in_srgb,var(--mn-warning)_10%,transparent)]': isPending(app.info.packageName, 'direct') }"
+          >
+            <label class="flex min-w-0 cursor-pointer items-center gap-2">
+              <input
+                type="checkbox"
+                class="size-4 shrink-0 accent-[var(--mn-cactus)]"
+                :checked="isSelected(app.info.packageName, 'direct')"
+                :aria-label="t('选择 {value}', { value: app.info.appLabel })"
+                @change="toggleApp(app.info.packageName, 'direct')"
+              >
+              <img
+                v-if="appIcon(app.info.packageName)"
+                :src="appIcon(app.info.packageName) ?? ''"
+                alt=""
+                class="size-8 shrink-0 rounded-md"
+                loading="lazy"
+                decoding="async"
+              >
+              <span v-else class="flex size-8 shrink-0 items-center justify-center rounded-md bg-[var(--mn-ivory)] text-xs font-medium text-[var(--mn-ink-muted)]" aria-hidden="true">{{ app.initial }}</span>
+              <span class="grid min-w-0 gap-0.5">
+                <span class="min-w-0 break-all text-sm text-[var(--mn-ink-soft)]">{{ packageDisplayName(app.info) }}</span>
+                <span v-if="packageDisplayName(app.info) !== app.info.packageName" class="min-w-0 break-all text-xs text-[var(--mn-ink-faint)]">{{ app.info.packageName }}</span>
+              </span>
+            </label>
+          </li>
+        </ul>
+        <p v-if="!directListApps.length" class="mn-empty p-3">{{ state.packages.length ? t('没有匹配的应用。') : t('暂无应用，点“刷新”读取。') }}</p>
       </div>
     </Card>
 

@@ -280,7 +280,7 @@ test("native editor preserves drafts and blocks empty or invalid saves", async (
 });
 
 test("toolbar menus fit the page when opened", async ({ page }) => {
-  for (const [workspace, tab, heading] of [pages[2], pages[6], pages[8]]) {
+  for (const [workspace, tab, heading] of [pages[6], pages[8]]) {
     await navigate(page, workspace, tab, heading);
     const menu = page.locator(".mn-page-actions .config-action-menu");
     await menu.locator("summary").click();
