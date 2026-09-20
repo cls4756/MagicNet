@@ -124,7 +124,7 @@ export type IssueOperationContext = {
 
 const SAFE_COMMANDS: Record<string, readonly string[]> = {
   api: ["preflight", "groups", "conns", "proxies"],
-  app: ["list", "packages", "add", "add-many", "remove"],
+  app: ["list", "packages", "add", "add-many", "remove", "sync"],
   backup: ["create", "export", "restore", "restore-file"],
   block: ["list", "add", "add-domain", "allow-rule", "remove", "remove-domain", "unallow-rule", "update"],
   config: ["apply", "show"],

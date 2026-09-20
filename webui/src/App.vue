@@ -80,7 +80,7 @@ const asyncPages = Object.fromEntries(
 const tabs: readonly TabDefinition[] = [
   { key: "control", label: "概览", workspace: "run" },
   { key: "about", label: "流量路径", workspace: "run" },
-  { key: "apps", label: "应用", workspace: "route" },
+  { key: "apps", label: "应用分流", workspace: "route" },
   { key: "block", label: "拦截规则", workspace: "route" },
   { key: "chain", label: "链式代理", workspace: "route" },
   { key: "subs", label: "订阅", workspace: "configure" },

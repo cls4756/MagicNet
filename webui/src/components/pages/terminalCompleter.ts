@@ -401,7 +401,7 @@ export const CLI_COMMAND_TREE: readonly CommandDoc[] = [
   },
   {
     name: "app",
-    syntax: "{list|recommendations|mode|apply}",
+    syntax: "{list|packages|recommendations|mode|add|add-many|remove|sync|apply}",
     description: "Android 应用分流白名单 / 黑名单策略",
     children: [
       { name: "list", description: "查看当前应用分流规则配置" },
@@ -415,6 +415,7 @@ export const CLI_COMMAND_TREE: readonly CommandDoc[] = [
           { name: "whitelist", description: "白名单模式：仅指定应用绕过代理" },
         ],
       },
+      { name: "sync", syntax: "<base64-lines>", description: "一次写入 Proxy 与 Direct 名单并只重启一次内核" },
       { name: "apply", description: "应用应用分流规则" },
     ],
   },

@@ -88,6 +88,7 @@ for (const command of sensitiveCommands) {
 }
 for (const [displayArgs, expected] of [
   ["app add [package] bypass", "command=app.add arguments=filtered"],
+  ["app sync [payload]", "command=app.sync arguments=filtered"],
   ["block add-domain [domain]", "command=block.add-domain arguments=filtered"],
   ["config-editor get sing-box [private-output]", "command=config-editor.get arguments=filtered"],
   ["backup export [private-output]", "command=backup.export arguments=filtered"],

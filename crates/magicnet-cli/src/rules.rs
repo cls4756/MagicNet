@@ -6,7 +6,7 @@ use std::process::Command;
 
 use crate::service::restart_current_core;
 use crate::utils::{clean_module_lines, replace_module_text_files_transactionally};
-use crate::{run_magicnet_function, write_text_file, App};
+use crate::{decode_base64, run_magicnet_function, write_text_file, App};
 
 pub(crate) use block::block_cmd;
 
@@ -81,10 +81,11 @@ pub(crate) fn app_cmd(app: &App, args: &[String]) -> Result<(), String> {
         "add" => app_add(app, args),
         "add-many" => app_add_many(app, args),
         "remove" => app_remove(app, args),
+        "sync" => app_sync(app, args),
         "packages" => app_packages(args),
         "recommendations" => app_recommendations(),
         "apply" => app_apply_and_restart(app),
-        _ => Err("Usage: cli app {list|packages [query]|recommendations|mode <blacklist|whitelist>|add <package> [proxy|direct|bypass]|add-many <proxy|direct|bypass> <package...>|remove <package> [proxy|direct|bypass]|apply}".to_string()),
+        _ => Err("Usage: cli app {list|packages [query]|recommendations|mode <blacklist|whitelist>|add <package> [proxy|direct|bypass]|add-many <proxy|direct|bypass> <package...>|remove <package> [proxy|direct|bypass]|sync <base64-lines>|apply}".to_string()),
     }
 }
 
@@ -195,6 +196,104 @@ fn app_remove(app: &App, args: &[String]) -> Result<(), String> {
         target.unwrap_or("all")
     );
     Ok(())
+}
+
+/// One requested change from an `app sync` payload.
+#[derive(Debug, PartialEq, Eq)]
+enum AppSyncAction {
+    /// Adds to the target list and drops the package from every other list.
+    Add { target: usize, package: String },
+    /// Removes the package from the target list only.
+    Remove { target: usize, package: String },
+}
+
+/// Apply many proxy/direct list changes in one transaction and one core
+/// restart. The payload is base64-encoded text with one
+/// `<add|remove> <proxy|direct> <package>` line per change; only the listed
+/// packages change, so any list entry a caller did not know about survives.
+fn app_sync(app: &App, args: &[String]) -> Result<(), String> {
+    if args.len() < 2 {
+        return Err("Usage: cli app sync <base64-lines>".to_string());
+    }
+    let decoded = decode_base64(args[1].as_str())?;
+    let payload =
+        String::from_utf8(decoded).map_err(|_| "app sync payload must be UTF-8".to_string())?;
+    let actions = parse_app_sync_payload(&payload)?;
+    let mut lists = app_policy_lists(app)?;
+    apply_app_sync_actions(&mut lists, &actions);
+    write_app_policy_lists_transactionally(app, &lists)?;
+    app_apply_and_restart(app)?;
+    println!("[info] Applied {} app list changes", actions.len());
+    Ok(())
+}
+
+fn apply_app_sync_actions(lists: &mut [Vec<String>; 3], actions: &[AppSyncAction]) {
+    for action in actions {
+        match action {
+            AppSyncAction::Add { target, package } => {
+                for lines in lists.iter_mut() {
+                    lines.retain(|line| line != package);
+                }
+                lists[*target].push(package.clone());
+            }
+            AppSyncAction::Remove { target, package } => {
+                lists[*target].retain(|line| line != package);
+            }
+        }
+    }
+}
+
+fn parse_app_sync_payload(payload: &str) -> Result<Vec<AppSyncAction>, String> {
+    let mut actions = Vec::new();
+    for (index, raw) in payload.lines().enumerate() {
+        let line = raw.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        let mut fields = line.split_whitespace();
+        let action = fields.next().unwrap_or_default();
+        let named_target = fields.next().unwrap_or_default();
+        let package = fields.next().unwrap_or_default();
+        if fields.next().is_some() {
+            return Err(format!(
+                "invalid app sync line {}: expected '<add|remove> <proxy|direct> <package>'",
+                index + 1
+            ));
+        }
+        let target = match named_target {
+            "proxy" => 0usize,
+            "direct" => 1usize,
+            other => {
+                return Err(format!(
+                    "invalid app sync target on line {}: {other}; expected proxy or direct",
+                    index + 1
+                ))
+            }
+        };
+        if !valid_package_name(package) {
+            return Err(format!(
+                "invalid package name on app sync line {}: {package}",
+                index + 1
+            ));
+        }
+        actions.push(match action {
+            "add" => AppSyncAction::Add {
+                target,
+                package: package.to_string(),
+            },
+            "remove" => AppSyncAction::Remove {
+                target,
+                package: package.to_string(),
+            },
+            other => {
+                return Err(format!(
+                    "invalid app sync action on line {}: {other}; expected add or remove",
+                    index + 1
+                ))
+            }
+        });
+    }
+    Ok(actions)
 }
 
 fn app_apply_and_restart(app: &App) -> Result<(), String> {
@@ -557,6 +656,78 @@ mod tests {
         assert_eq!(fs::read_to_string(&direct).unwrap(), "new-direct\n");
         assert_eq!(fs::read_to_string(&bypass).unwrap(), "new-bypass\n");
         fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn app_sync_payload_parses_changes_and_rejects_invalid_lines() {
+        let actions = parse_app_sync_payload(
+            "add proxy com.example.b\n\n# comment\nremove direct com.example.c\nadd proxy com.example.b\n",
+        )
+        .unwrap();
+        assert_eq!(
+            actions,
+            vec![
+                AppSyncAction::Add {
+                    target: 0,
+                    package: "com.example.b".to_string(),
+                },
+                AppSyncAction::Remove {
+                    target: 1,
+                    package: "com.example.c".to_string(),
+                },
+                AppSyncAction::Add {
+                    target: 0,
+                    package: "com.example.b".to_string(),
+                },
+            ]
+        );
+        assert!(parse_app_sync_payload("").unwrap().is_empty());
+        assert!(parse_app_sync_payload("add com.example.a").is_err());
+        assert!(parse_app_sync_payload("add bypass com.example.a").is_err());
+        assert!(parse_app_sync_payload("add proxy not-a-package").is_err());
+        assert!(parse_app_sync_payload("add proxy com.example.a extra").is_err());
+        assert!(parse_app_sync_payload("replace proxy com.example.a").is_err());
+    }
+
+    #[test]
+    fn app_sync_moves_added_packages_and_leaves_untouched_entries() {
+        let mut lists = [
+            vec!["com.example.old-proxy".to_string()],
+            vec![
+                "com.example.old-direct".to_string(),
+                "com.example.keep-direct".to_string(),
+            ],
+            vec![
+                "com.example.moved".to_string(),
+                "com.example.keep".to_string(),
+            ],
+        ];
+        apply_app_sync_actions(
+            &mut lists,
+            &[
+                AppSyncAction::Remove {
+                    target: 0,
+                    package: "com.example.old-proxy".to_string(),
+                },
+                AppSyncAction::Add {
+                    target: 0,
+                    package: "com.example.moved".to_string(),
+                },
+                AppSyncAction::Add {
+                    target: 1,
+                    package: "com.example.old-direct".to_string(),
+                },
+            ],
+        );
+        assert_eq!(lists[0], vec!["com.example.moved".to_string()]);
+        assert_eq!(
+            lists[1],
+            vec![
+                "com.example.keep-direct".to_string(),
+                "com.example.old-direct".to_string(),
+            ]
+        );
+        assert_eq!(lists[2], vec!["com.example.keep".to_string()]);
     }
 
     #[test]

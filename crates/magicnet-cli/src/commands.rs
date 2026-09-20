@@ -80,7 +80,7 @@ const COMMANDS: &[CommandSpec] = commands! {
     "webui" => webui_cmd, "{status|verify|install-local <https-download-url> <sha256> [name]|payload {create <tmp|subscription> <safe-basename>|append <tmp|subscription> <safe-basename> <base64-chunk>|remove <tmp|subscription> <safe-basename>|apply-subscription <safe-basename>|apply-subscription-source <safe-basename>}}";
     "backup" => backup_cmd, "{export [password]|restore [password|-] <base64>|restore-file [password|-] <path>}";
     "api" => api_command, "{endpoint|ui [current|sing-box|all]|groups|proxies|select <group> <node>|conns|stats|close <id>|close-top [count]|close-matching <query>|close-all}";
-    "app" => app_cmd, "{list|packages [query]|recommendations|mode <blacklist|whitelist>|add <package> [proxy|direct|bypass]|add-many <proxy|direct|bypass> <package...>|remove <package> [proxy|direct|bypass]|apply}; proxy=sing-box proxy outbound, direct=sing-box direct outbound, bypass=outside MagicNet";
+    "app" => app_cmd, "{list|packages [query]|recommendations|mode <blacklist|whitelist>|add <package> [proxy|direct|bypass]|add-many <proxy|direct|bypass> <package...>|remove <package> [proxy|direct|bypass]|sync <base64-lines>|apply}; proxy=sing-box proxy outbound, direct=sing-box direct outbound, bypass=outside MagicNet";
     "diagnose" => |app, _| run_magicnet_function(app, "magicnet_action_diagnose"), "";
 };
 
@@ -276,6 +276,7 @@ mod tests {
         assert!(usage.contains("packages [query]"));
         assert!(usage.contains("recommendations"));
         assert!(usage.contains("add-many <proxy|direct|bypass> <package...>"));
+        assert!(usage.contains("sync <base64-lines>"));
     }
 
     #[test]
