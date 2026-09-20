@@ -12,6 +12,8 @@ import {
 } from "lucide-vue-next";
 import { computed, nextTick, ref, shallowRef, watch } from "vue";
 import Button from "@/components/ui/Button.vue";
+import Card from "@/components/ui/Card.vue";
+import CardHeading from "@/components/ui/CardHeading.vue";
 import PageHeader from "@/components/ui/PageHeader.vue";
 import Textarea from "@/components/ui/Textarea.vue";
 import { useActionLock } from "@/composables/useActionLock";
@@ -46,7 +48,9 @@ import SubscriptionScheduleCard from "./subscriptions/SubscriptionScheduleCard.v
 import SubscriptionUsageList from "./subscriptions/SubscriptionUsageList.vue";
 import { buildSubscriptionUsageOverview } from "@/composables/subscriptionUsage";
 import SubscriptionLifecycleRecord from "./subscriptions/SubscriptionLifecycleRecord.vue";
+import SubscriptionLifecycleStrip from "./subscriptions/SubscriptionLifecycleStrip.vue";
 import { pendingSubscriptionDraft, takePendingSubscriptionDraft } from "./subscriptionDraft";
+import ProxyGroupsPanel from "./ProxyGroupsPanel.vue";
 
 // 默认节点过滤词与提示（清空并保存即可关闭过滤）：
 const filterPresets = ["免费", "free", "HK", "香港", "TW", "台湾"] as const;
@@ -105,7 +109,9 @@ const canApply = computed(() => {
 const applyLabel = computed(() => configured.value ? t("保存并应用") : t("添加并启用"));
 const usageRows = computed(() => buildSubscriptionUsageOverview(state.subscriptions));
 const lifecycleRunning = computed(() => subscriptionLifecycleRunning(state.backgroundTask, state.subscriptions.updateRunning));
-const sourceCount = computed(() => state.subscriptions.sourceMode === "local" ? 1 : usageRows.value.length);
+const sourceCount = computed(() => state.subscriptions.sourceMode === "local"
+  ? 1
+  : Math.max(state.subscriptions.configuredCount, state.subscriptions.singBoxUrls.length, usageRows.value.length));
 const lifecycleMessage = computed(() => {
   if (lifecycleRunning.value) return t("正在更新订阅，完成后用量与节点会自动刷新。");
   if (state.backgroundTask.status === "timeout" && isSubscriptionBackgroundArgs(state.backgroundTask.args)) {
@@ -318,81 +324,112 @@ async function copySummary(): Promise<void> {
 
 <template>
   <div class="subscriptions-page">
-    <PageHeader :title="t('订阅')">
+    <PageHeader
+      :overline="t('订阅与节点')"
+      :title="t('订阅管理')"
+      :description="t('集中管理订阅来源、更新状态，以及订阅导入后的节点测速与选择。')"
+    >
       <template #actions>
         <Button v-if="configured" ref="manageSourcesButton" variant="outline" :aria-expanded="editorOpen" aria-controls="subscription-editor" @click="openEditor">
-          <Plus :size="16" />{{ t("管理来源") }} </Button>
+          <Plus :size="16" />{{ t("管理订阅") }} </Button>
         <Button v-if="configured" :loading="lifecycleRunning || isRunning('update-all')" :disabled="state.busy" @click="updateSubscriptions">
           <RefreshCw :size="16" />{{ t("更新订阅") }} </Button>
       </template>
     </PageHeader>
-
-    <div v-if="configured" class="subscription-summary">
-      <span>{{ t("{value} 个来源", { value: sourceCount }) }}<span v-if="state.subscriptions.lastImportedCount > 0"> {{ t("· {value} 个节点", { value: state.subscriptions.lastImportedCount }) }}</span></span>
-      <span v-if="dirty" class="unsaved-note">{{ t("有未保存的更改") }}</span>
-      <Button variant="ghost" size="icon" :loading="isRunning('refresh-subs')" :aria-label="t('重新读取订阅状态')" @click="withAction('refresh-subs', () => refreshSubs())">
-        <RefreshCw :size="15" />
-      </Button>
-    </div>
 
     <p v-if="lifecycleMessage" class="subscription-feedback" role="status" :data-error="!lifecycleRunning">
       {{ lifecycleMessage }}
     </p>
     <p v-if="actionMessage" class="subscription-feedback" role="status">{{ actionMessage }}</p>
 
-    <SubscriptionUsageList v-if="configured" :rows="usageRows" :local="state.subscriptions.sourceMode === 'local'" />
-    <p v-if="configured && state.subscriptions.sourceMode !== 'local'" class="usage-footnote">{{ t("用量与到期时间由服务商提供，更新订阅时同步。") }}</p>
-
-    <section v-if="editorOpen || !configured" id="subscription-editor" ref="editorPanel" class="source-editor" :aria-label="t('编辑订阅来源')">
-      <div class="editor-heading">
-        <div>
-          <h3>{{ configured ? t("管理订阅来源") : t("添加第一个订阅") }}</h3>
-          <p>{{ t("粘贴订阅链接，每行一个，最多 5 个。也可导入本地文件。") }}</p>
-        </div>
+    <Card v-if="configured" class="grid gap-4 !p-4 md:!p-6">
+      <CardHeading
+        :overline="t('订阅概览')"
+        :title="t('{sources} 个来源 · {nodes} 个节点', { sources: sourceCount, nodes: state.subscriptions.lastImportedCount })"
+        :description="t('节点数量来自最近一次成功导入；更新订阅后会自动刷新下方节点列表。')"
+      >
+        <span v-if="dirty" class="unsaved-note">{{ t("有未保存的更改") }}</span>
+        <Button variant="ghost" size="icon" :loading="isRunning('refresh-subs')" :aria-label="t('重新读取订阅状态')" @click="withAction('refresh-subs', () => refreshSubs())">
+          <RefreshCw :size="15" />
+        </Button>
+      </CardHeading>
+      <div class="subscription-overview-grid">
+        <SubscriptionLifecycleStrip :configured="configured" />
       </div>
-      <Textarea
-        v-model="singBoxText"
-        class="source-textarea"
-        spellcheck="false"
-        autocomplete="off"
-        autocapitalize="none"
-        autocorrect="off"
-        inputmode="url"
-        placeholder="https://example.com/subscription"
-        :aria-label="t('sing-box 订阅 URL，每行一个')"
-        aria-describedby="subscription-validation"
+    </Card>
+
+    <Card class="grid gap-4 !p-4 md:!p-6">
+      <CardHeading
+        :overline="t('订阅来源')"
+        :title="configured ? t('来源与用量') : t('添加第一个订阅')"
+        :description="configured ? t('订阅地址仅在私密编辑流程中读取；页面只展示服务商与用量摘要。') : t('粘贴 HTTPS 订阅链接，或导入本地订阅文件。')"
+      >
+        <Button v-if="configured && !editorOpen" variant="outline" size="sm" @click="openEditor">
+          <Plus :size="15" />{{ t("编辑来源") }}
+        </Button>
+      </CardHeading>
+
+      <SubscriptionUsageList v-if="configured" :rows="usageRows" :local="state.subscriptions.sourceMode === 'local'" />
+      <p v-if="configured && state.subscriptions.sourceMode !== 'local'" class="usage-footnote">{{ t("用量与到期时间由服务商提供，更新订阅时同步。") }}</p>
+
+      <section v-if="editorOpen || !configured" id="subscription-editor" ref="editorPanel" class="source-editor" :aria-label="t('编辑订阅来源')">
+        <div class="editor-heading">
+          <div>
+            <h3>{{ configured ? t("管理订阅来源") : t("添加订阅来源") }}</h3>
+            <p>{{ t("粘贴订阅链接，每行一个，最多 5 个。也可导入本地文件。") }}</p>
+          </div>
+        </div>
+        <Textarea
+          v-model="singBoxText"
+          class="source-textarea"
+          spellcheck="false"
+          autocomplete="off"
+          autocapitalize="none"
+          autocorrect="off"
+          inputmode="url"
+          placeholder="https://example.com/subscription"
+          :aria-label="t('sing-box 订阅 URL，每行一个')"
+          aria-describedby="subscription-validation"
+        />
+        <div id="subscription-validation" class="editor-validation" role="status" :data-error="savePlan.status === 'error'">
+          <span>{{ savePlan.status === 'idle' ? t("支持 HTTPS 订阅链接") : savePlan.message }}</span>
+          <span v-if="inputSummary.duplicate || inputSummary.overLimit">{{ t("有效 {value} · 重复 {value2} · 超限 {value3}", { value: inputSummary.valid, value2: inputSummary.duplicate, value3: inputSummary.overLimit }) }}</span>
+        </div>
+        <div class="editor-actions">
+          <input ref="subscriptionFileInput" class="hidden" type="file" accept=".yaml,.yml,.txt,.list,.conf,application/yaml,text/yaml,text/plain" @change="importLocalSubscriptions">
+          <div class="source-import-actions">
+            <Button variant="outline" :loading="isRunning('paste-subscriptions')" @click="pasteSubscriptions"><ClipboardPaste :size="16" />{{ t("粘贴链接") }}</Button>
+            <Button variant="outline" :loading="isRunning('apply-local-subscription')" :disabled="lifecycleRunning" @click="chooseLocalSubscriptions"><FileUp :size="16" />{{ t("导入文件") }}</Button>
+          </div>
+          <div class="source-save-actions">
+            <Button v-if="configured" variant="ghost" :disabled="lifecycleRunning" @click="cancelEditing">{{ t("取消") }}</Button>
+            <Button :disabled="!canApply || lifecycleRunning" :loading="isRunning('apply-subscriptions')" @click="applySubscriptions"><Save :size="16" />{{ applyLabel }}</Button>
+          </div>
+        </div>
+        <details v-if="subscriptionPreview.length" class="source-preview">
+          <summary>{{ t("检查来源") }} <ChevronDown :size="15" /></summary>
+          <ul>
+            <li v-for="item in subscriptionPreview" :key="item.key" :data-invalid="item.status === 'invalid' || item.status === 'over-limit'">
+              <span>{{ item.index }}.</span><strong>{{ item.label }}</strong>
+              <span>{{ item.status === 'ok' ? t("有效") : item.status === 'duplicate' ? t("重复") : item.status === 'over-limit' ? t("超出数量限制") : t("请检查链接") }}</span>
+            </li>
+          </ul>
+          <div class="preview-actions">
+            <Button variant="ghost" :disabled="!singBoxText.trim()" @click="normalizeSubscriptions">{{ t("去重并整理") }}</Button>
+            <Button variant="ghost" @click="copySummary"><ShieldCheck :size="15" />{{ summaryCopied ? t("已复制") : t("复制来源摘要") }}</Button>
+          </div>
+        </details>
+      </section>
+    </Card>
+
+    <ProxyGroupsPanel v-if="configured" />
+
+    <Card class="subscription-settings !p-4 md:!p-6">
+      <CardHeading
+        :overline="t('维护')"
+        :title="t('更新记录与高级设置')"
+        :description="t('自动更新、节点过滤和请求标识保留在高级设置中，日常切换节点无需进入这里。')"
       />
-      <div id="subscription-validation" class="editor-validation" role="status" :data-error="savePlan.status === 'error'">
-        <span>{{ savePlan.status === 'idle' ? t("支持 HTTPS 订阅链接") : savePlan.message }}</span>
-        <span v-if="inputSummary.duplicate || inputSummary.overLimit">{{ t("有效 {value} · 重复 {value2} · 超限 {value3}", { value: inputSummary.valid, value2: inputSummary.duplicate, value3: inputSummary.overLimit }) }}</span>
-      </div>
-      <div class="editor-actions">
-        <input ref="subscriptionFileInput" class="hidden" type="file" accept=".yaml,.yml,.txt,.list,.conf,application/yaml,text/yaml,text/plain" @change="importLocalSubscriptions">
-        <div class="source-import-actions">
-          <Button variant="outline" :loading="isRunning('paste-subscriptions')" @click="pasteSubscriptions"><ClipboardPaste :size="16" />{{ t("粘贴链接") }}</Button>
-          <Button variant="outline" :loading="isRunning('apply-local-subscription')" :disabled="lifecycleRunning" @click="chooseLocalSubscriptions"><FileUp :size="16" />{{ t("导入文件") }}</Button>
-        </div>
-        <div class="source-save-actions">
-          <Button v-if="configured" variant="ghost" :disabled="lifecycleRunning" @click="cancelEditing">{{ t("取消") }}</Button>
-          <Button :disabled="!canApply || lifecycleRunning" :loading="isRunning('apply-subscriptions')" @click="applySubscriptions"><Save :size="16" />{{ applyLabel }}</Button>
-        </div>
-      </div>
-      <details v-if="subscriptionPreview.length" class="source-preview">
-        <summary>{{ t("检查来源") }} <ChevronDown :size="15" /></summary>
-        <ul>
-          <li v-for="item in subscriptionPreview" :key="item.key" :data-invalid="item.status === 'invalid' || item.status === 'over-limit'">
-            <span>{{ item.index }}.</span><strong>{{ item.label }}</strong>
-            <span>{{ item.status === 'ok' ? t("有效") : item.status === 'duplicate' ? t("重复") : item.status === 'over-limit' ? t("超出数量限制") : t("请检查链接") }}</span>
-          </li>
-        </ul>
-        <div class="preview-actions">
-          <Button variant="ghost" :disabled="!singBoxText.trim()" @click="normalizeSubscriptions">{{ t("去重并整理") }}</Button>
-          <Button variant="ghost" @click="copySummary"><ShieldCheck :size="15" />{{ summaryCopied ? t("已复制") : t("复制来源摘要") }}</Button>
-        </div>
-      </details>
-    </section>
-
-    <div class="subscription-settings">
       <details class="settings-section">
         <summary>
           <span><RefreshCw :size="17" aria-hidden="true" />{{ t("更新记录") }}</span>
@@ -409,19 +446,18 @@ async function copySummary(): Promise<void> {
           <SubscriptionUserAgentCard ref="userAgentCardRef" :configured="configured" />
         </div>
       </details>
-    </div>
+    </Card>
   </div>
 </template>
 
 <style scoped>
-.subscriptions-page { width: 100%; max-width: 880px; min-width: 0; margin: 0 auto; }
-.subscription-summary { display: flex; align-items: center; gap: 12px; margin: 8px 0 14px; color: var(--mn-ink-muted); font-size: .875rem; }
-.subscription-summary > :last-child { margin-left: auto; }
+.subscriptions-page { display: grid; width: 100%; max-width: 1120px; min-width: 0; gap: 20px; margin: 0 auto; }
+.subscription-overview-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
 .unsaved-note { color: var(--mn-warning); }
-.subscription-feedback { margin: 16px 0; border: 1px solid var(--mn-border); border-radius: var(--mn-radius-sm); padding: 12px 16px; color: var(--mn-ink-soft); background: var(--mn-surface-sunken); font-size: .875rem; line-height: 1.65; overflow-wrap: anywhere; }
+.subscription-feedback { margin: 0; border: 1px solid var(--mn-border); border-radius: var(--mn-radius-sm); padding: 12px 16px; color: var(--mn-ink-soft); background: var(--mn-surface-sunken); font-size: .875rem; line-height: 1.65; overflow-wrap: anywhere; }
 .subscription-feedback[data-error="true"] { color: var(--mn-warning); }
-.usage-footnote { margin: 0 0 28px; color: var(--mn-ink-muted); font-size: .8125rem; line-height: 1.6; }
-.source-editor { margin: 24px 0; padding: 24px 0; border-top: 1px solid var(--mn-border); scroll-margin-top: 120px; }
+.usage-footnote { margin: 0; color: var(--mn-ink-muted); font-size: .8125rem; line-height: 1.6; }
+.source-editor { padding-top: 20px; border-top: 1px solid var(--mn-border); scroll-margin-top: 120px; }
 .editor-heading h3 { margin: 0; font-size: 1rem; font-weight: 600; }
 .editor-heading p { margin: 8px 0 0; color: var(--mn-ink-muted); font-size: .875rem; line-height: 1.65; }
 .source-textarea { margin-top: 20px; min-height: 144px; font-size: max(16px, .875rem); line-height: 1.7; overflow-wrap: anywhere; }
@@ -438,7 +474,7 @@ details[open] > summary > svg:last-child { transform: rotate(180deg); }
 .source-preview li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 10px; padding: 8px 0; color: var(--mn-ink-muted); font-size: .8125rem; }
 .source-preview li strong { font-weight: 500; color: var(--mn-ink-soft); overflow-wrap: anywhere; }
 .source-preview li[data-invalid="true"] { color: var(--mn-danger); }
-.subscription-settings { margin-top: 28px; }
+.subscription-settings { margin-top: 0; }
 .settings-section { border-top: 1px solid var(--mn-border); }
 .settings-section > summary { min-height: 62px; font-size: .9375rem; font-weight: 500; }
 .settings-section > summary > span { display: inline-flex; align-items: center; gap: 12px; }
@@ -448,11 +484,12 @@ details[open] > summary > svg:last-child { transform: rotate(180deg); }
 .settings-section > summary > span:first-child > svg { flex: 0 0 auto; }
 .subscription-settings-content { display: grid; gap: 16px; padding-bottom: 20px; }
 @media (max-width: 600px) {
-  .source-editor { padding: 24px 0; }
+  .subscriptions-page { gap: 14px; }
+  .subscription-overview-grid { grid-template-columns: minmax(0, 1fr); }
+  .source-editor { padding-top: 20px; }
   .source-save-actions { order: -1; }
   .editor-actions { align-items: stretch; gap: 16px; }
   .source-import-actions, .source-save-actions { width: 100%; }
   .source-import-actions > *, .source-save-actions > :last-child { flex: 1; }
-  .subscription-summary { flex-wrap: wrap; gap: 6px; }
 }
 </style>

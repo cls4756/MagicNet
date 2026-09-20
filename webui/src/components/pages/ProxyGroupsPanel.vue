@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { t } from "@/i18n";
-import { computed, ref } from "vue";
-import { Copy, RefreshCw, Route } from "lucide-vue-next";
+import { computed, ref, watch } from "vue";
+import { ChevronDown, Copy, RefreshCw, Route } from "lucide-vue-next";
 import Button from "@/components/ui/Button.vue";
 import Card from "@/components/ui/Card.vue";
 import ConfirmPanel from "@/components/ui/ConfirmPanel.vue";
@@ -27,6 +27,7 @@ const rawOutput = ref("");
 const copied = ref(false);
 const groupQuery = ref("");
 const groupDelays = ref<Record<string, NodeDelayEntry[]>>({});
+const expandedGroups = ref<Set<string>>(new Set());
 const pendingAction = ref<PendingProxyAction | null>(null);
 const selectionPlanCopied = ref(false);
 
@@ -47,7 +48,7 @@ const filteredGroups = computed(() => {
     ...group.proxies
   ].some((value) => sanitizeProxyName(value).toLowerCase().includes(query)));
 });
-const visibleGroups = computed(() => filteredGroups.value.slice(0, 8));
+const visibleGroups = computed(() => filteredGroups.value);
 
 async function refreshGroups(): Promise<void> {
   await withAction("proxy-groups-refresh", async () => {
@@ -102,13 +103,20 @@ function groupDelayStats(group: ProxyGroupSummary) {
 
 function visibleGroupNodes(group: ProxyGroupSummary): string[] {
   const query = groupQuery.value.trim().toLowerCase();
-  if (!query) return group.proxies.slice(0, 9);
+  if (!query) return expandedGroups.value.has(group.name) ? group.proxies : group.proxies.slice(0, 9);
   const groupMatched = [group.name, group.type, group.now]
     .some((value) => sanitizeProxyName(value).toLowerCase().includes(query));
   const nodes = groupMatched
     ? group.proxies
     : group.proxies.filter((node) => sanitizeProxyName(node).toLowerCase().includes(query));
-  return nodes.slice(0, 9);
+  return nodes;
+}
+
+function toggleGroupExpanded(group: ProxyGroupSummary): void {
+  const next = new Set(expandedGroups.value);
+  if (next.has(group.name)) next.delete(group.name);
+  else next.add(group.name);
+  expandedGroups.value = next;
 }
 
 async function selectNode(group: string, node: string): Promise<void> {
@@ -167,6 +175,10 @@ async function copyReport(): Promise<void> {
 }
 
 const { target: visibilityTarget } = useVisibilityTask(refreshGroups);
+
+watch(() => state.subscriptions.lastSuccessEpoch, (value, previous) => {
+  if (value > 0 && value !== previous && rawOutput.value) void refreshGroups();
+});
 </script>
 
 <template>
@@ -174,8 +186,8 @@ const { target: visibilityTarget } = useVisibilityTask(refreshGroups);
     <Card class="grid gap-3">
     <div class="flex flex-wrap items-start justify-between gap-3">
       <div class="min-w-0">
-        <h3 class="inline-flex items-center gap-2 text-base font-semibold"><Route :size="17" /> {{ t("代理组") }}</h3>
-        <p class="mt-1 text-sm leading-6 text-[var(--mn-ink-muted)]"> {{ t("调用 api proxies 读取 selector/provider，并可确认后执行 api select。") }}
+        <h3 class="inline-flex items-center gap-2 text-base font-semibold"><Route :size="17" /> {{ t("节点与策略组") }}</h3>
+        <p class="mt-1 text-sm leading-6 text-[var(--mn-ink-muted)]"> {{ t("查看订阅导入的节点，测试延迟，并为每个策略组选择当前节点。") }}
         </p>
       </div>
       <div class="flex gap-2">
@@ -259,9 +271,21 @@ const { target: visibilityTarget } = useVisibilityTask(refreshGroups);
             </span>
           </button>
         </div>
+        <Button
+          v-if="group.proxies.length > 9 && !groupQuery.trim()"
+          class="mt-2"
+          size="sm"
+          variant="ghost"
+          :aria-expanded="expandedGroups.has(group.name)"
+          @click="toggleGroupExpanded(group)"
+        >
+          <ChevronDown :size="15" :class="expandedGroups.has(group.name) ? 'rotate-180' : ''" />
+          {{ expandedGroups.has(group.name) ? t("收起节点") : t("查看全部 {count} 个节点", { count: group.proxies.length }) }}
+        </Button>
       </div>
     </div>
     <pre v-else-if="rawOutput" class="max-h-48 overflow-auto rounded-md bg-[var(--mn-carrier-deep)] p-3 text-xs leading-6 text-[var(--mn-ink-soft)] whitespace-pre-wrap">{{ rawOutput }}</pre>
+    <p v-else class="mn-empty">{{ t("正在读取当前策略组与节点；如果 sing-box 未运行，请先更新订阅并启动服务。") }}</p>
     </Card>
   </div>
 </template>

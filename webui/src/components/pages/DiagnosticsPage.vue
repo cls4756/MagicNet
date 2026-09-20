@@ -14,8 +14,6 @@ import { copyText, execFailed, probeFailed, redactedCliPreview } from "@/utils";
 import { formatApiEndpointProbeReport, summarizeApiEndpointProbes, summarizeApiProbeOutput, validateApiProbeOutput, type ApiEndpointProbe, type ApiProbeKey } from "./apiEndpointProbe";
 import ConnectionsPanel from "./ConnectionsPanel.vue";
 import { formatHealthCheckReport, summarizeHealthChecks } from "./healthCheckSummary";
-import NodeDelayPanel from "./NodeDelayPanel.vue";
-import ProxyGroupsPanel from "./ProxyGroupsPanel.vue";
 import { hideSupportIssueLines, triageSupportBundle } from "./supportBundleTriage";
 import TrafficStatsPanel from "./TrafficStatsPanel.vue";
 
@@ -334,8 +332,5 @@ const healthLabels: Record<string, string> = { fail: "失败", warn: "注意", i
 
     <details class="mn-disclosure"><summary>{{ t("实时流量") }}</summary><TrafficStatsPanel /></details>
     <details class="mn-disclosure"><summary>{{ t("当前连接") }}</summary><ConnectionsPanel /></details>
-    <details class="mn-disclosure"><summary>{{ t("节点与代理组") }}</summary><ProxyGroupsPanel /></details>
-    <details class="mn-disclosure"><summary>{{ t("节点测速") }}</summary><NodeDelayPanel /></details>
-
   </div>
 </template>
