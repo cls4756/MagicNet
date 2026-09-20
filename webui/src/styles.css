@@ -510,7 +510,8 @@ a {
 .page-surface :where(input, select, textarea) { max-width: 100%; }
 .page-surface :where(p, code, dd) { overflow-wrap: anywhere; }
 .page-surface[data-page="health"] .magic-card > .flex > .flex,
-.page-surface[data-page="tools"] .magic-card > .flex { flex-wrap: wrap; }
+.page-surface[data-page="tools"] .magic-card > .flex,
+.page-surface[data-page="warp"] .magic-card > .flex { flex-wrap: wrap; }
 
 .mn-loading-panel { min-height: 150px; padding-block: 24px; color: var(--mn-ink-muted); font-size: 0.8125rem; }
 .mn-deferred-region { content-visibility: auto; contain-intrinsic-size: auto 420px; }
@@ -522,7 +523,7 @@ a {
   bottom: 0;
   left: 0;
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 8px;
   padding: 10px max(16px, env(safe-area-inset-right)) calc(10px + env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
   border-top: 1px solid var(--mn-border);

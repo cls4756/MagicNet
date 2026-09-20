@@ -32,9 +32,9 @@ assert.match(styles, /\.magic-card\s*\{[^}]*border-top: 1px solid var\(--mn-bord
 
 assert.match(
   app,
-  /type WorkspaceKey = "run" \| "route" \| "configure" \| "diagnose"/,
+  /type WorkspaceKey = "run" \| "route" \| "configure" \| "settings" \| "toolbox"/,
 );
-for (const label of ["运行", "路由", "配置", "诊断"]) {
+for (const label of ["运行", "路由", "配置", "设置", "工具"]) {
   assert.match(
     app,
     new RegExp(`label: "${label}"`),
@@ -47,7 +47,7 @@ assert.match(
 );
 assert.match(
   styles,
-  /\.mobile-nav\s*\{[\s\S]*grid-template-columns:\s*repeat\(4,/,
+  /\.mobile-nav\s*\{[\s\S]*grid-template-columns:\s*repeat\(5,/,
 );
 assert.match(styles, /\.mobile-nav button\s*\{[\s\S]*min-height:\s*56px/);
 assert.match(styles, /env\(safe-area-inset-bottom\)/);

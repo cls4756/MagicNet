@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { t } from "@/i18n";
 import { computed, onMounted, ref } from "vue";
-import { Network, RefreshCw, Save } from "lucide-vue-next";
+import { RefreshCw, Save } from "lucide-vue-next";
 import Button from "@/components/ui/Button.vue";
 import Card from "@/components/ui/Card.vue";
 import { useActionLock } from "@/composables/useActionLock";
@@ -50,14 +50,6 @@ onMounted(() => void refreshStatus(true));
 
 <template>
   <Card class="grid gap-3">
-    <div class="flex items-center justify-between gap-3">
-      <h3 class="inline-flex items-center gap-2 text-base font-semibold">
-        <Network :size="17" /> UDP / IPv6
-      </h3>
-      <Button size="sm" variant="outline" :loading="isRunning('network-refresh')" @click="withAction('network-refresh', () => refreshStatus())">
-        <RefreshCw :size="15" />{{ t("刷新") }}
-      </Button>
-    </div>
     <p class="text-sm leading-6 text-[var(--mn-ink-muted)]">
       {{ t("调整 TUN 双栈、MTU 和 UDP 会话保持时间。应用会重建 sing-box 运行配置。") }}
     </p>
@@ -93,9 +85,14 @@ onMounted(() => void refreshStatus(true));
         </select>
       </label>
     </div>
-    <Button :loading="isRunning('network-policy')" @click="applyPolicy">
-      <Save :size="16" />{{ t("保存并应用") }}
-    </Button>
+    <div class="flex flex-wrap gap-2">
+      <Button :loading="isRunning('network-policy')" @click="applyPolicy">
+        <Save :size="16" />{{ t("保存并应用") }}
+      </Button>
+      <Button variant="outline" :loading="isRunning('network-refresh')" @click="withAction('network-refresh', () => refreshStatus())">
+        <RefreshCw :size="16" />{{ t("刷新") }}
+      </Button>
+    </div>
     <pre class="overflow-auto rounded-md bg-[var(--mn-carrier-deep)] p-3 text-xs leading-6 text-[var(--mn-ink-soft)]">effective_ipv6_mode={{ effectiveMode }}
 effective_stack={{ effectiveStack }}
 effective_mtu={{ effectiveMtu }}

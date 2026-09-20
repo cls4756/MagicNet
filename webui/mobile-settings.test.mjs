@@ -73,7 +73,8 @@ test("subscription navigation always opens subscriptions while other groups reta
         configure: "config",
         run: "about",
         route: "chain",
-        diagnose: "output",
+        settings: "domain",
+        toolbox: "output",
       },
     },
   };
@@ -84,7 +85,7 @@ test("subscription navigation always opens subscriptions while other groups reta
     .replace(": WorkspaceKey", "")
     .replace(": void", "");
   runInNewContext(source, scope);
-  for (const workspace of ["configure", "run", "route", "diagnose"])
+  for (const workspace of ["configure", "run", "route", "settings", "toolbox"])
     scope.setWorkspace(workspace);
-  assert.deepEqual(selected, ["subs", "about", "chain", "output"]);
+  assert.deepEqual(selected, ["subs", "about", "chain", "domain", "output"]);
 });

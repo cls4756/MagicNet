@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { t } from "@/i18n";
 import { computed, ref } from "vue";
-import { Cloud, Copy, RadioTower, RefreshCw } from "lucide-vue-next";
+import { Copy, RadioTower, RefreshCw } from "lucide-vue-next";
 import Button from "@/components/ui/Button.vue";
 import Card from "@/components/ui/Card.vue";
 import Input from "@/components/ui/Input.vue";
@@ -154,7 +154,6 @@ function normalizeDomain(value: string): string {
 
 <template>
   <Card class="grid gap-3">
-    <h3 class="inline-flex items-center gap-2 text-base font-semibold"><Cloud :size="17" /> {{ t("DNS 配置") }}</h3>
     <p class="text-sm leading-6 text-[var(--mn-ink-muted)]">{{ t("DNS profile 控制应用查询；Bootstrap DNS 独立负责默认本地解析和代理节点域名解析。保存后会应用配置并重启 sing-box。") }}</p>
 
     <ToolActionConfirmCard

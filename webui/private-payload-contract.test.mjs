@@ -191,6 +191,10 @@ const toolsSource = readFileSync(
   new URL("./src/components/pages/ToolsPage.vue", import.meta.url),
   "utf8",
 );
+const settingsWarpSource = readFileSync(
+  new URL("./src/components/pages/SettingsWarpPage.vue", import.meta.url),
+  "utf8",
+);
 const subscriptionsSource = readFileSync(
   new URL("./src/components/pages/SubscriptionsPage.vue", import.meta.url),
   "utf8",
@@ -232,7 +236,7 @@ const linksSource = readFileSync(
   new URL("./src/composables/useExternalLinks.ts", import.meta.url),
   "utf8",
 );
-for (const source of [toolsSource, subscriptionsSource]) {
+for (const source of [toolsSource, settingsWarpSource, subscriptionsSource]) {
   assert.doesNotMatch(
     source,
     /secureTempFilePrepareCommand|printf\s+%s|:\s*>|\bcat\s+|\brm\s+-f/,
@@ -343,7 +347,7 @@ for (const [source, preview] of [
   [diagnosticsSource, "support bundle [private-output]"],
   [blocklistSource, "block add-domain [domain]"],
   [outputSource, "refresh background log [private-output]"],
-  [toolsSource, "refresh tools [private-output]"],
+  [settingsWarpSource, "warp import-file [private-payload]"],
   [warpRoutesSource, "route list [private-output]"],
 ]) {
   assert.match(

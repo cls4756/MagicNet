@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { t } from "@/i18n";
 import { computed, onMounted, ref } from "vue";
-import { RefreshCw, Split } from "lucide-vue-next";
+import { RefreshCw } from "lucide-vue-next";
 import Badge from "@/components/ui/Badge.vue";
 import Button from "@/components/ui/Button.vue";
 import Card from "@/components/ui/Card.vue";
@@ -68,16 +68,11 @@ onMounted(() => void refreshStatus(true));
 
 <template>
   <Card class="grid gap-3">
-    <div class="flex items-center justify-between gap-3">
-      <h3 class="inline-flex items-center gap-2 text-base font-semibold">
-        <Split :size="17" /> {{ t("域名转发") }}
-      </h3>
-      <div class="flex items-center gap-2">
-        <Badge :tone="statusTone">{{ statusText }}</Badge>
-        <Button size="sm" variant="outline" :loading="isRunning('domain-forward-refresh')" @click="withAction('domain-forward-refresh', () => refreshStatus())">
-          <RefreshCw :size="15" />{{ t("刷新") }}
-        </Button>
-      </div>
+    <div class="flex flex-wrap items-center gap-2">
+      <Badge :tone="statusTone">{{ statusText }}</Badge>
+      <Button size="sm" variant="outline" :loading="isRunning('domain-forward-refresh')" @click="withAction('domain-forward-refresh', () => refreshStatus())">
+        <RefreshCw :size="15" />{{ t("刷新") }}
+      </Button>
     </div>
     <p class="text-sm leading-6 text-[var(--mn-ink-muted)]">
       {{ t("让代理节点收到本地嗅探出的域名，而不是只有 IP。默认开启，只影响 TCP。") }}

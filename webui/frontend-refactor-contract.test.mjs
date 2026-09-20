@@ -237,12 +237,12 @@ assert.match(
 );
 assert.match(
   app,
-  /运行|路由|配置|诊断/,
-  "four primary workspace labels must remain",
+  /运行|路由|配置|设置|工具/,
+  "primary workspace labels must remain",
 );
 assert.match(
   app,
-  /流量路径|应用|拦截规则|链式代理|订阅|工具|面板|输出/,
+  /流量路径|应用|拦截规则|链式代理|订阅|协议栈|面板|输出/,
   "all local page labels must remain reachable",
 );
 assert.match(

@@ -57,7 +57,7 @@ test("pending commands keep navigation responsive and execute in order", async (
   if (await desktopOutput.isVisible()) {
     await desktopOutput.click();
   } else {
-    await page.locator('[data-workspace="diagnose"]:visible').click();
+    await page.locator('[data-workspace="toolbox"]:visible').click();
     await page.locator('.mn-section-tabs [data-tab="output"]:visible').click();
   }
   await expect(page.getByRole("heading", { name: "最近输出", exact: true })).toBeVisible();

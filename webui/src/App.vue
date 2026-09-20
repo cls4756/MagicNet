@@ -11,8 +11,9 @@ import {
   RefreshCw,
   ScrollText,
   Settings,
-  Stethoscope,
+  SlidersHorizontal,
   Sun,
+  Wrench,
   X,
 } from "lucide-vue-next";
 import { computed, defineAsyncComponent, nextTick, onMounted, onUnmounted, ref, type Component } from "vue";
@@ -30,8 +31,8 @@ import { useTheme } from "@/composables/useTheme";
 import { useMobileKeyboard } from "@/composables/useMobileKeyboard";
 import { restoreFocusAfterUpdate, trapFocusWithin } from "@/lib/focus";
 
-type TabKey = "control" | "tailscale" | "about" | "config" | "apps" | "block" | "chain" | "subs" | "tools" | "health" | "terminal" | "webui" | "output";
-type WorkspaceKey = "run" | "route" | "configure" | "diagnose";
+type TabKey = "control" | "tailscale" | "about" | "config" | "apps" | "block" | "chain" | "subs" | "dns" | "domain" | "warp" | "stack" | "tools" | "health" | "terminal" | "webui" | "output";
+type WorkspaceKey = "run" | "route" | "configure" | "settings" | "toolbox";
 type OnboardingPreference = "dismissed" | "completed";
 
 type TabDefinition = {
@@ -58,6 +59,10 @@ const pageLoaders: Record<TabKey, () => Promise<{ default: Component }>> = {
   block: () => import("@/components/pages/BlocklistPage.vue"),
   chain: () => import("@/components/pages/ProxyChainPage.vue"),
   subs: () => import("@/components/pages/SubscriptionsPage.vue"),
+  dns: () => import("@/components/pages/SettingsDnsPage.vue"),
+  domain: () => import("@/components/pages/SettingsDomainForwardPage.vue"),
+  warp: () => import("@/components/pages/SettingsWarpPage.vue"),
+  stack: () => import("@/components/pages/SettingsStackPage.vue"),
   tools: () => import("@/components/pages/ToolsPage.vue"),
   webui: () => import("@/components/pages/WebuiPage.vue"),
   health: () => import("@/components/pages/DiagnosticsPage.vue"),
@@ -87,10 +92,14 @@ const tabs: readonly TabDefinition[] = [
   { key: "tailscale", label: "Tailscale", workspace: "configure" },
   { key: "config", label: "配置文件", workspace: "configure" },
   { key: "webui", label: "管理面板", workspace: "configure" },
-  { key: "health", label: "健康检查", workspace: "diagnose" },
-  { key: "terminal", label: "终端", workspace: "diagnose" },
-  { key: "tools", label: "工具", workspace: "diagnose" },
-  { key: "output", label: "最近输出", workspace: "diagnose" },
+  { key: "dns", label: "DNS 配置", workspace: "settings" },
+  { key: "domain", label: "域名转发", workspace: "settings" },
+  { key: "warp", label: "WARP 出站", workspace: "settings" },
+  { key: "stack", label: "协议栈", workspace: "settings" },
+  { key: "health", label: "健康检查", workspace: "toolbox" },
+  { key: "terminal", label: "终端", workspace: "toolbox" },
+  { key: "tools", label: "维护", workspace: "toolbox" },
+  { key: "output", label: "最近输出", workspace: "toolbox" },
 ];
 
 const workspaces: readonly WorkspaceDefinition[] = [
@@ -111,9 +120,14 @@ const workspaces: readonly WorkspaceDefinition[] = [
     icon: Settings,
   },
   {
-    key: "diagnose",
-    label: "诊断",
-    icon: Stethoscope,
+    key: "settings",
+    label: "设置",
+    icon: SlidersHorizontal,
+  },
+  {
+    key: "toolbox",
+    label: "工具",
+    icon: Wrench,
   },
 ];
 
@@ -127,6 +141,8 @@ const {
   refreshHealth,
   refreshMcp,
   refreshDns,
+  refreshNetwork,
+  refreshDomainForward,
   refreshWarp,
   createIssue,
   closeIssueReporter,
@@ -157,7 +173,8 @@ const lastTabByWorkspace = ref<Record<WorkspaceKey, TabKey>>({
   run: "control",
   route: "apps",
   configure: "subs",
-  diagnose: "health",
+  settings: "dns",
+  toolbox: "health",
 });
 const showUtilityMenu = ref(false);
 const showOnboarding = ref(false);
@@ -409,10 +426,12 @@ function warmActiveTab(tab: TabKey): void {
     void refreshHealth(true);
   }
   if (tab === "tools") {
-    void refreshDns(true);
-    void refreshWarp(true);
     void refreshMcp(true);
   }
+  if (tab === "dns") void refreshDns(true);
+  if (tab === "domain") void refreshDomainForward(true);
+  if (tab === "warp") void refreshWarp(true);
+  if (tab === "stack") void refreshNetwork(true);
 }
 
 onMounted(() => {
@@ -605,7 +624,7 @@ onUnmounted(() => {
           </nav>
         </header>
 
-        <!-- KeepAlive preserves form state across all four workspaces. -->
+        <!-- KeepAlive preserves form state across all five workspaces. -->
         <section class="page-surface" :data-page="activeTab">
           <Suspense>
             <KeepAlive :max="12">
