@@ -3,7 +3,7 @@ import test from "node:test";
 import { decodeMachineData, machineErrorCode, machineFailureText, parseMachineDns, parseMachineDomainForward, parseMachineNetwork, parseMachineRuntime } from "./src/composables/machineStatus.ts";
 
 const envelope = (command, data) => JSON.stringify({ schema: 1, ok: true, command, data });
-const dns = { profile: "default", primary: "bootstrap-local-dns", secondary: null, transport: "default", via_proxy: false };
+const dns = { profile: "default", primary: "bootstrap-local-dns", secondary: null, transport: "default", via_proxy: false, bootstrap_configured: "aliyun", bootstrap_transport: "doh" };
 const network = {
   configured: { ipv6_mode: "prefer_ipv4", mtu: 1400, udp_timeout: "5m" },
   effective: { ipv6_mode: "ipv4_only", stack: "mixed", mtu: 1280, udp_timeout: "3m" },
@@ -36,12 +36,29 @@ test("unsupported machine commands stay errors rather than enabling legacy fallb
 });
 
 test("DNS shape validation is shared and nullable secondary clears stale values", () => {
-  assert.deepEqual(parseMachineDns(envelope("dns.status", dns)), { profile: dns.profile, primary: dns.primary, secondary: "", transport: dns.transport, viaProxy: dns.via_proxy });
+  assert.deepEqual(parseMachineDns(envelope("dns.status", dns)), { profile: dns.profile, primary: dns.primary, secondary: "", transport: dns.transport, viaProxy: dns.via_proxy, bootstrap: "aliyun", bootstrapTransport: "doh" });
   for (const invalid of [{}, { ...dns, profile: "unsupported" }, { ...dns, primary: null },
     { ...dns, secondary: false }, { ...dns, transport: "quic" }]) {
     assert.equal(parseMachineDns(envelope("dns.status", invalid)), null);
   }
   assert.equal(parseMachineDns(envelope("network.status", dns)), null);
+});
+
+test("DNS bootstrap validation accepts stable providers and matching transports", () => {
+  for (const [bootstrap_configured, bootstrap_transport] of [
+    ["system", "udp"], ["aliyun", "doh"], ["baidu", "udp"], ["tencent", "doh"],
+  ]) {
+    const result = parseMachineDns(envelope("dns.status", { ...dns, bootstrap_configured, bootstrap_transport }));
+    assert.equal(result?.bootstrap, bootstrap_configured);
+    assert.equal(result?.bootstrapTransport, bootstrap_transport);
+  }
+  for (const input of [
+    { ...dns, bootstrap_configured: "google" },
+    { ...dns, bootstrap_transport: "dot" },
+    { ...dns, bootstrap_configured: "system", bootstrap_transport: "doh" },
+    { ...dns, bootstrap_configured: "aliyun", bootstrap_transport: "udp" },
+    { ...dns, bootstrap_configured: null },
+  ]) assert.equal(parseMachineDns(envelope("dns.status", input)), null);
 });
 
 test("DNS profile expansion accepts all canonical profiles and via_proxy flag", () => {

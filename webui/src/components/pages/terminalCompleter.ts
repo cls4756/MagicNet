@@ -267,7 +267,7 @@ export const CLI_COMMAND_TREE: readonly CommandDoc[] = [
   },
   {
     name: "dns",
-    syntax: "{status|set|test|apply}",
+    syntax: "{status|set|bootstrap|test|apply}",
     description: "安全 DNS 上游服务器与防泄漏策略",
     children: [
       { name: "status", description: "查看当前 DNS 配置与防泄漏状态" },
@@ -280,6 +280,15 @@ export const CLI_COMMAND_TREE: readonly CommandDoc[] = [
           { name: "cloudflare-doh", description: "使用 Cloudflare DNS over HTTPS" },
           { name: "cloudflare-dot", description: "使用 Cloudflare DNS over TLS" },
           { name: "cloudflare-udp", description: "使用 Cloudflare 标准 UDP DNS" },
+        ],
+      },
+      {
+        name: "bootstrap",
+        syntax: "{status|set <system|aliyun|baidu|tencent>}",
+        description: "设置默认本地与代理节点域名解析上游",
+        children: [
+          { name: "status", description: "查看 Bootstrap DNS 设置" },
+          { name: "set", syntax: "<system|aliyun|baidu|tencent>", description: "切换 Bootstrap DNS" },
         ],
       },
       { name: "test", syntax: "[domain]", description: "测试指定域名的 DNS 解析延迟" },

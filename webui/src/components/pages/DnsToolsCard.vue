@@ -35,11 +35,19 @@ const dnsProfiles = [
   "cloudflare-dot",
   "cloudflare-udp",
 ] as const;
+const bootstrapDnsOptions = ["system", "aliyun", "baidu", "tencent"] as const;
 const dnsSummary = computed(() => parseDnsTestSummary(dnsTestOutput.value, testedDomain.value));
 
 async function runSetDnsProfile(profile: string): Promise<void> {
   await withAction(`dns-${profile}`, async () => {
     const text = await runCli(`dns set ${shellQuote(profile)}`, t("切换 DNS {profile}", { profile }));
+    if (!execFailed(text)) await refreshDnsStatus(true);
+  });
+}
+
+async function runSetBootstrapDns(bootstrap: string): Promise<void> {
+  await withAction(`dns-bootstrap-${bootstrap}`, async () => {
+    const text = await runCli(`dns bootstrap set ${shellQuote(bootstrap)}`, t("切换 Bootstrap DNS {bootstrap}", { bootstrap }));
     if (!execFailed(text)) await refreshDnsStatus(true);
   });
 }
@@ -61,6 +69,19 @@ function setDnsProfile(profile: string): void {
     get detail() { return t("会应用 MagicNet DNS profile，并重启当前 sing-box 配置。"); },
     command: `dns set ${profile}`,
     run: () => runSetDnsProfile(profile)
+  };
+}
+
+function setBootstrapDns(bootstrap: string): void {
+  if (!bootstrapDnsOptions.includes(bootstrap as typeof bootstrapDnsOptions[number])) return;
+  pendingDnsProfile.value = "";
+  dnsPlanCopied.value = false;
+  pendingDnsAction.value = {
+    key: `dns-bootstrap-${bootstrap}`,
+    get title() { return t("切换 Bootstrap DNS 到 {bootstrap}", { bootstrap }); },
+    get detail() { return t("Bootstrap DNS 用于默认本地解析和代理节点域名解析；保存后会重新生成配置并重启 sing-box。"); },
+    command: `dns bootstrap set ${bootstrap}`,
+    run: () => runSetBootstrapDns(bootstrap)
   };
 }
 
@@ -133,8 +154,8 @@ function normalizeDomain(value: string): string {
 
 <template>
   <Card class="grid gap-3">
-    <h3 class="inline-flex items-center gap-2 text-base font-semibold"><Cloud :size="17" /> 1.1.1.1 DNS</h3>
-    <p class="text-sm leading-6 text-[var(--mn-ink-muted)]">{{ t("切换 MagicNet 内置 DNS profile；保存后会应用配置并重启当前 sing-box。") }}</p>
+    <h3 class="inline-flex items-center gap-2 text-base font-semibold"><Cloud :size="17" /> {{ t("DNS 配置") }}</h3>
+    <p class="text-sm leading-6 text-[var(--mn-ink-muted)]">{{ t("DNS profile 控制应用查询；Bootstrap DNS 独立负责默认本地解析和代理节点域名解析。保存后会应用配置并重启 sing-box。") }}</p>
 
     <ToolActionConfirmCard
       v-if="pendingDnsAction"
@@ -161,17 +182,35 @@ function normalizeDomain(value: string): string {
       </Button>
     </div>
 
-    <div class="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
-      <select
-        class="h-10 min-w-0 rounded-md border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-ivory)] px-3 text-sm text-[var(--mn-ink)]"
-        :value="pendingDnsProfile || state.dns.profile"
-        @change="setDnsProfile(($event.target as HTMLSelectElement).value)"
-      >
-        <option value="default">{{ t("默认 DNS") }}</option>
-        <option value="cloudflare-doh">Cloudflare DoH</option>
-        <option value="cloudflare-dot">Cloudflare DoT</option>
-        <option value="cloudflare-udp">Cloudflare UDP</option>
-      </select>
+    <div class="grid gap-3 sm:grid-cols-2">
+      <label class="grid gap-1 text-xs text-[var(--mn-ink-muted)]">
+        <span>{{ t("应用 DNS Profile") }}</span>
+        <select
+          class="h-10 min-w-0 rounded-md border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-ivory)] px-3 text-sm text-[var(--mn-ink)]"
+          :value="pendingDnsProfile || state.dns.profile"
+          @change="setDnsProfile(($event.target as HTMLSelectElement).value)"
+        >
+          <option value="default">{{ t("默认 DNS") }}</option>
+          <option value="cloudflare-doh">Cloudflare DoH</option>
+          <option value="cloudflare-dot">Cloudflare DoT</option>
+          <option value="cloudflare-udp">Cloudflare UDP</option>
+        </select>
+      </label>
+      <label class="grid gap-1 text-xs text-[var(--mn-ink-muted)]">
+        <span>Bootstrap DNS</span>
+        <select
+          class="h-10 min-w-0 rounded-md border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-ivory)] px-3 text-sm text-[var(--mn-ink)]"
+          :value="state.dns.bootstrap"
+          @change="setBootstrapDns(($event.target as HTMLSelectElement).value)"
+        >
+          <option value="system">{{ t("Android 系统 DNS（支持局域网域名）") }}</option>
+          <option value="aliyun">{{ t("阿里云公共 DNS") }}</option>
+          <option value="baidu">{{ t("百度公共 DNS") }}</option>
+          <option value="tencent">{{ t("腾讯 DNSPod 公共 DNS") }}</option>
+        </select>
+      </label>
+    </div>
+    <div class="flex justify-end">
       <Button variant="secondary" :loading="isRunning('dns-refresh')" @click="withAction('dns-refresh', refreshDnsState)">
         <RefreshCw :size="16" />{{ t("刷新") }}
       </Button>
@@ -204,6 +243,8 @@ function normalizeDomain(value: string): string {
 primary={{ state.dns.primary }}
 secondary={{ state.dns.secondary || "-" }}
 transport={{ state.dns.transport }}</pre>
+    <pre class="max-h-24 overflow-auto rounded-md bg-[var(--mn-carrier-deep)] p-3 text-xs leading-6 text-[var(--mn-ink-soft)] whitespace-pre-wrap">bootstrap={{ state.dns.bootstrap }}
+bootstrap_transport={{ state.dns.bootstrapTransport }}</pre>
 
     <div v-if="dnsTestOutput" class="grid gap-2">
       <div class="rounded-md border p-3" :class="dnsStatusTone(dnsSummary.status)">

@@ -38,7 +38,7 @@ export function buildDnsProfilePlan(currentProfile: string, targetProfile: strin
     warnings: [
       ...(same ? [t("当前已经是该 DNS profile，确认执行通常只会重新应用配置。")] : []),
       ...(target === "cloudflare-udp" ? [t("UDP 方式更容易受网络环境影响；如解析不稳定，优先改用 DoH/DoT。")] : []),
-      ...(target !== "default" ? [t("Cloudflare profile 会保留直连 bootstrap-local-dns，并把默认 DNS fallback 切到代理 detour 的 Cloudflare server。")] : [])
+      ...(target !== "default" ? [t("非默认 profile 会保留独立的 bootstrap-local-dns 解析器，并把应用 DNS 切到所选 profile。")] : [])
     ]
   };
 }

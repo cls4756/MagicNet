@@ -13,7 +13,7 @@ assert.equal(functions.length, names.length);
 const utilities = ts.createSourceFile("utils.ts", readFileSync(new URL("./src/utils.ts", import.meta.url), "utf8"), ts.ScriptTarget.Latest, true);
 const execFailed = utilities.statements.find((node) => ts.isFunctionDeclaration(node) && node.name?.text === "execFailed").getText(utilities).replace(/^export /, "");
 const code = ts.transpileModule(execFailed + "\n" + functions.map((node) => node.getText(source)).join("\n"), { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText;
-const dnsResponse = JSON.stringify({ schema: 1, ok: true, command: "dns.status", data: { profile: "default", primary: "bootstrap-local-dns", secondary: null, transport: "default" } });
+const dnsResponse = JSON.stringify({ schema: 1, ok: true, command: "dns.status", data: { profile: "default", primary: "bootstrap-local-dns", secondary: null, transport: "default", bootstrap_configured: "aliyun", bootstrap_transport: "doh" } });
 const networkResponse = JSON.stringify({ schema: 1, ok: true, command: "network.status", data: {
   configured: { ipv6_mode: "prefer_ipv4", mtu: 1400, udp_timeout: "5m" },
   effective: { ipv6_mode: "unavailable", stack: "unavailable", mtu: null, udp_timeout: "unavailable" },
@@ -22,7 +22,7 @@ function fixture() {
   let token = 1, resolve;
   const pending = new Promise((done) => { resolve = done; });
   const calls = [];
-  const state = { dns: { profile: "cloudflare-doh", primary: "old", secondary: "old", transport: "doh" }, phase: "done", notice: "newer action", output: "newer output", busy: false };
+  const state = { dns: { profile: "cloudflare-doh", primary: "old", secondary: "old", transport: "doh", bootstrap: "system", bootstrapTransport: "udp" }, phase: "done", notice: "newer action", output: "newer output", busy: false };
   const context = vm.createContext({
     state, machineFailureText, parseMachineDns, parseMachineNetwork,
     t: (text, values = {}) => text.replace(/\{(\w+)\}/g, (_, key) => values[key] ?? key),
@@ -38,6 +38,7 @@ test("global DNS refresh uses one machine request and clears a nullable secondar
   const refresh = context.refreshDns(); resolve(dnsResponse);
   assert.equal(await refresh, true);
   assert.equal(state.dns.profile, "default"); assert.equal(state.dns.secondary, "");
+  assert.equal(state.dns.bootstrap, "aliyun");
   assert.deepEqual(calls, ["--json dns status"]);
 });
 

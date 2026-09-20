@@ -104,6 +104,22 @@ su -c /data/adb/modules/MagicNet/cli app list
 
 应用重装、工作资料用户新增或包 UID 变化后，执行 `cli app apply` 或在 WebUI 重新应用策略，使 UID 列表按当前用户重新解析。
 
+## DNS Profile 与 Bootstrap DNS
+
+MagicNet 全局接管应用 DNS，但把两个职责分开配置：
+
+- DNS Profile 控制应用查询最终使用的解析器；订阅模板中的 `doh-cloudflare`、`doh-google` 等策略标签会改写到当前 profile。
+- Bootstrap DNS 负责默认本地解析以及代理节点域名解析，避免代理解析依赖代理本身形成循环。
+
+Bootstrap DNS 可选 `system|aliyun|baidu|tencent`：
+
+```bash
+su -c /data/adb/modules/MagicNet/cli dns bootstrap status
+su -c '/data/adb/modules/MagicNet/cli dns bootstrap set system'
+```
+
+`system` 会在应用配置时读取 Android 当前网络下发的 DNS 地址并由 sing-box 直连查询，适合路由器私有域名和分流 DNS；读取失败时配置切换会失败并回滚。它不是对 Android `netd` 的逐请求转发，Wi-Fi、热点或蜂窝网络切换后应执行 `cli dns apply` 重新读取当前网络 DNS。直接访问 `192.168.0.0/16` 等 IP 地址本身不经过 DNS。默认值仍为 `aliyun`，以保持旧版本行为。
+
 WebUI 的应用列表显示应用名称（来自管理器的包信息接口）；能提供应用图标的 KernelSU 管理器会直接显示图标，其余情况退化为包名首字母，名称始终回退到包名。搜索框同时匹配应用名称和包名，因此可以按“微信”这类名称直接过滤。`cli app packages` 只按包名过滤，缺少包信息接口时会退回到该路径。
 
 ## Wi-Fi SSID/BSSID 策略

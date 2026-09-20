@@ -189,11 +189,13 @@ adb shell 'su -M -c "timeout 10 tcpdump -ni rmnet_data0 \"port 53 or port 853\""
 
 目标状态是访问测试期间没有明文 DNS/DoT 流量从物理出口泄露。MagicNet 会在物理出口接口上拦截直连 53/853，避免绕过 TUN 的 DNS 直接出网；如需临时关闭，可设置 `MAGIC_DNS_LEAK_GUARD=0` 后重新应用配置。
 
-DNS 模板保留 `bootstrap-local-dns` 作为启动和直连例外：它解析代理节点域名、局域网、国内直连域名和连通性检测，避免代理尚未建立时让 DNS detour 到代理造成自引用循环，也避免国内网站拿到错误 CDN。代理域名、AI、GFW 和海外媒体仍按规则走海外 DoH 和代理 detour；如果把 `default_domain_resolver` 指向走代理的 DNS，可能出现 `DNS query loopback in transport[...]` 并导致大量站点超时。
+DNS 模板保留 `bootstrap-local-dns` 作为代理节点域名解析的控制面例外，避免 `default_domain_resolver` 指向代理 detour 后出现自引用循环。应用 DNS 规则会在 profile 应用时统一改写到当前 profile；因此 profile 控制应用 DNS，而 bootstrap 上游通过 `MAGICNET_BOOTSTRAP_DNS` 独立选择。
 
-切换到 Cloudflare DoH/DoT/UDP profile 时，`bootstrap-local-dns` 仍保持直连，仅将 `dns.final` 切到由 `proxy` detour 承载的 `cloudflare-profile-dns`，并保留 `cloudflare-backup-dns` 作为备用。这样 DoT/UDP 不会在启用 53/853 leak guard 时被本机规则拦截，也不会让代理节点域名解析反向依赖代理自身。
+WebUI 可把 Bootstrap DNS 设为 `system|aliyun|baidu|tencent`，CLI 对应 `cli dns bootstrap set <system|aliyun|baidu|tencent>`。默认保持 `aliyun`。`system` 会在应用配置时读取 Android 当前网络的 DNS 地址并生成带防回流 mark 的直连 UDP 上游，适合路由器提供的 `.lan`、`home.arpa` 等局域网域名；探测不到可用系统 DNS 时会拒绝应用，不会静默回退到公网。该地址是应用时快照，网络切换后执行 `cli dns apply` 重新读取。独立运行的 sing-box `type: local` 只读取 `/etc/resolv.conf`，不等同于 Android `netd` 原始解析，所以 MagicNet 不使用它冒充系统 DNS。
 
-DNS 泄露检测站点会生成一次性探测域名，并根据收到查询的递归解析器判断是否泄露。为了避免这类探测域名被 `bootstrap-local-dns` 或运营商 DNS 解析，模板在所有国内/本地 DNS 规则之前放置高优先级规则，将 BrowserScan、BrowserLeaks、IPLeak、DNSLeakTest、Perfect Privacy、Surfshark、Whoer、DoILeak、Bash.ws、DNS.SB、NextDNS test 等泄露检测域名强制交给 `doh-cloudflare`。`doh-cloudflare` 本身配置了 `detour: proxy`，所以这些探测查询会从代理出口的远端 DoH 发出，而不是从手机本地运营商 DNS 发出。
+切换到 Cloudflare DoH/DoT/UDP profile 时，应用 DNS 规则会切到由 profile 生成的 `cloudflare-profile-dns`，并保留 `cloudflare-backup-dns` 作为备用；模板中的 `doh-cloudflare`、`doh-google` 只是被重写的策略别名，不再绕过 profile 固定访问某个公共 DNS。MagicNet 自身的直连 DNS socket 使用专用 mark，DNS 捕获与可选 53/853 leak guard 只放行该 mark，不会放行普通应用 DNS，也不会让代理节点域名解析反向依赖代理自身。
+
+DNS 泄露检测站点会生成一次性探测域名，并根据收到查询的递归解析器判断是否泄露。模板可以包含面向广告、DoH 检测和 Global 模式的 `doh-cloudflare` / `doh-google` 规则，但它们只作为订阅模板的策略标签；运行时应用 DNS profile 会把这些应用 DNS 规则统一改写到当前 profile。这样切换 profile 后不会因为模板遗留规则继续固定访问某个公共 DNS；只有代理节点自身的 bootstrap 解析继续使用 `bootstrap-local-dns`。
 
 ## 设计取舍
 
