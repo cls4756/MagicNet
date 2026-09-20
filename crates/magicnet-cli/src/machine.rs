@@ -248,7 +248,8 @@ fn supervisor_data(app: &App) -> Value {
 
 fn dns_status_value(app: &App) -> Value {
     let profile = dns_profile(app);
-    let via_proxy = !profile.ends_with("-direct");
+    let bootstrap_configured = dns_bootstrap(app);
+    let via_proxy = dns_via_proxy(app, &profile);
     let (primary, secondary, transport) = match profile.as_str() {
         "cloudflare-udp" | "cloudflare-udp-direct" => ("1.1.1.1", Some("1.0.0.1"), "udp"),
         "cloudflare-dot" | "cloudflare-dot-direct" => ("tls://1.1.1.1", Some("tls://1.0.0.1"), "dot"),
@@ -283,6 +284,8 @@ fn dns_status_value(app: &App) -> Value {
             "secondary": secondary,
             "transport": transport,
             "via_proxy": via_proxy,
+            "bootstrap_configured": bootstrap_configured,
+            "bootstrap_transport": bootstrap_transport(&bootstrap_configured),
         }),
     )
 }
@@ -654,6 +657,38 @@ fn dns_profile(app: &App) -> String {
     .to_string()
 }
 
+fn dns_bootstrap(app: &App) -> String {
+    let value = read_kv(app.moddir.join(DNS_CONF))
+        .remove("MAGICNET_BOOTSTRAP_DNS")
+        .unwrap_or_default();
+    match value.as_str() {
+        "system" | "android" | "android-system" => "system",
+        "baidu" | "baidudns" => "baidu",
+        "tencent" | "dnspod" | "doh.pub" => "tencent",
+        _ => "aliyun",
+    }
+    .to_string()
+}
+
+fn dns_via_proxy(app: &App, profile: &str) -> bool {
+    if profile.ends_with("-direct") {
+        return false;
+    }
+    !matches!(
+        read_kv(app.moddir.join(DNS_CONF))
+            .remove("MAGICNET_DNS_VIA_PROXY")
+            .as_deref(),
+        Some("0")
+    )
+}
+
+fn bootstrap_transport(bootstrap: &str) -> &'static str {
+    match bootstrap {
+        "system" | "baidu" => "udp",
+        _ => "doh",
+    }
+}
+
 fn normalize_ipv6_mode(value: &str) -> &'static str {
     match value {
         "ipv4_only" | "ipv4-only" | "compat" | "disabled" => "ipv4_only",
@@ -850,13 +885,16 @@ mod tests {
         let (root, app) = fixture();
         fs::write(
             root.join(".config/magicnet/dns.conf"),
-            "MAGICNET_DNS_PROFILE=doh\nIGNORED_SECRET=do-not-return\n",
+            "MAGICNET_DNS_PROFILE=doh\nMAGICNET_BOOTSTRAP_DNS=system\nMAGICNET_DNS_VIA_PROXY=0\nIGNORED_SECRET=do-not-return\n",
         )
         .expect("write dns config");
         let value = dns_status_value(&app);
         assert_eq!(value["command"], "dns.status");
         assert_eq!(value["data"]["profile"], "cloudflare-doh");
         assert_eq!(value["data"]["transport"], "doh");
+        assert_eq!(value["data"]["via_proxy"], false);
+        assert_eq!(value["data"]["bootstrap_configured"], "system");
+        assert_eq!(value["data"]["bootstrap_transport"], "udp");
         assert!(!value.to_string().contains("do-not-return"));
         fs::remove_dir_all(root).expect("remove fixture");
     }

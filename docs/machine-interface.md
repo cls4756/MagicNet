@@ -109,6 +109,7 @@ Examples already enforced in schema 1:
 - Subscription status reports source type, configured count, update/transaction state, lifecycle counters and whether a reason exists; it does not expose the URL or reason text.
 - Wi-Fi status reports connection/match state and list counts; it does not expose SSID or BSSID text.
 - Network status separates `configured` policy from the values materialized in the effective sing-box configuration.
+- DNS status reports the canonical application profile plus `bootstrap_configured` and `bootstrap_transport`; it does not expose a private router DNS address discovered from the active Android network.
 - Domain-forwarding status reports `configured`, `core_support` and `effective` tokens plus a boolean rule flag; it never returns sniffed domains, rule contents or core paths.
 - Service PID inspection distinguishes `running`, `stopped` and `unknown`; an inspection failure is not treated as a running service.
 - Transparent status reports attachment states and interface counts, not shared-interface names.

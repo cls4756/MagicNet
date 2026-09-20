@@ -742,6 +742,37 @@ assert_dns_leak_guard_records_interfaces() (
 
 assert_dns_leak_guard_records_interfaces
 
+assert_dns_leak_guard_mark_exemption_precedes_reject() (
+  MODDIR="$WORK/dns-leak-guard-order/module"
+  export MODDIR
+  mkdir -p "$MODDIR"
+  guard_log="$WORK/dns-leak-guard-order.log"
+  : >"$guard_log"
+
+  iptables() {
+    case " $* " in
+    *' -D '* | *' -C '*) return 1 ;;
+    *' -I '*) printf '%s\n' "$*" >>"$guard_log"; return 0 ;;
+    *) return 0 ;;
+    esac
+  }
+  magicnet_cmd_exists() { [ "${1:-}" = iptables ]; }
+  magicnet_collect_physical_egress_ifaces() { printf '%s\n' wlan0; }
+  magicnet_ipv6_mode() { printf '%s\n' ipv4_only; }
+  magicnet_log() { :; }
+  magicnet_warn() { printf '%s\n' "$*" >&2; }
+
+  MAGIC_DNS_LEAK_GUARD=1 magicnet_enable_dns_leak_guard
+  reject_line="$(grep -n -- '-p udp --dport 53 -j REJECT$' "$guard_log" | cut -d: -f1)"
+  return_line="$(grep -n -- '-p udp --dport 53 -m mark .* -j RETURN$' "$guard_log" | cut -d: -f1)"
+  if [ -z "$reject_line" ] || [ -z "$return_line" ] || [ "$reject_line" -ge "$return_line" ]; then
+    printf '%s\n' 'marked DNS exemption must be inserted after the broad reject so it occupies the chain head' >&2
+    exit 1
+  fi
+)
+
+assert_dns_leak_guard_mark_exemption_precedes_reject
+
 assert_dns_leak_guard_ipv4_first_tolerates_missing_ipv6_nat() (
   MODDIR="$WORK/dns-leak-guard-ipv4-first/module"
   export MODDIR

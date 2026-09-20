@@ -113,6 +113,8 @@ export type DnsState = {
   secondary: string;
   transport: string;
   viaProxy: boolean;
+  bootstrap: "system" | "aliyun" | "baidu" | "tencent";
+  bootstrapTransport: "doh" | "udp";
 };
 
 export type WarpState = {

@@ -51,12 +51,51 @@ EOF
 . "$ROOT/src/MagicNet/lib/magicnet/subscribe_bootstrap.sh"
 . "$ROOT/src/MagicNet/lib/magicnet/dns.sh"
 
+assert_bootstrap_server() {
+  local bootstrap="$1"
+  local expected_type="$2"
+  local expected_server="$3"
+  local expected_sni="${4:-}"
+  MAGICNET_BOOTSTRAP_DNS="$bootstrap" MAGICNET_DNS_PROFILE=default magicnet_dns_apply_singbox
+  jq -e --arg expected_type "$expected_type" --arg expected_server "$expected_server" \
+    --arg expected_sni "$expected_sni" --argjson mark "$(magicnet_dns_capture_singbox_mark)" '
+      [.dns.servers[] | select(.tag == "bootstrap-local-dns")] ==
+      [if $expected_type == "udp" then
+         {"type":"udp","tag":"bootstrap-local-dns","server":$expected_server,"routing_mark":$mark}
+       else
+         {"type":"https","tag":"bootstrap-local-dns","server":$expected_server,"server_port":443,"routing_mark":$mark,"path":"/dns-query","headers":{"Host":$expected_sni},"tls":{"server_name":$expected_sni}}
+       end]
+      and .dns.final == "bootstrap-local-dns"
+    ' "$MODDIR/.config/sing-box/config.json" >/dev/null || {
+    printf 'bootstrap DNS %s was not materialized as expected\n' "$bootstrap" >&2
+    exit 1
+  }
+}
+
+assert_bootstrap_server aliyun https 223.6.6.6 dns.alidns.com
+assert_bootstrap_server baidu udp 180.76.76.76
+assert_bootstrap_server tencent https 1.12.12.12 doh.pub
+MAGICNET_ANDROID_SYSTEM_DNS_SERVERS='192.168.50.1, 2001:db8::53' \
+  assert_bootstrap_server system udp 192.168.50.1
+
+before_missing_system="$(sha256sum "$MODDIR/.config/sing-box/config.json" | awk '{print $1}')"
+if MAGICNET_ANDROID_SYSTEM_DNS_SERVERS='127.0.0.1' MAGICNET_BOOTSTRAP_DNS=system \
+  MAGICNET_DNS_PROFILE=default magicnet_dns_apply_singbox >/dev/null 2>&1; then
+  printf 'system bootstrap must fail when Android exposes no usable DNS server\n' >&2
+  exit 1
+fi
+after_missing_system="$(sha256sum "$MODDIR/.config/sing-box/config.json" | awk '{print $1}')"
+[ "$before_missing_system" = "$after_missing_system" ] || {
+  printf 'failed system bootstrap discovery must not modify sing-box config\n' >&2
+  exit 1
+}
+
 assert_profile_uses_proxy_detour() {
   local profile="$1"
   local expected_type="$2"
   local expected_port="$3"
   local tag_prefix="$4"
-  MAGICNET_DNS_PROFILE="$profile" magicnet_dns_apply_singbox
+  MAGICNET_BOOTSTRAP_DNS=aliyun MAGICNET_DNS_PROFILE="$profile" magicnet_dns_apply_singbox
 
   jq -e --arg expected_type "$expected_type" --argjson expected_port "$expected_port" --arg tag_prefix "$tag_prefix" '
       ([.dns.servers[]
@@ -82,7 +121,7 @@ assert_profile_direct_only() {
   local expected_type="$2"
   local expected_port="$3"
   local tag_prefix="$4"
-  MAGICNET_DNS_PROFILE="$profile" magicnet_dns_apply_singbox
+  MAGICNET_BOOTSTRAP_DNS=aliyun MAGICNET_DNS_PROFILE="$profile" magicnet_dns_apply_singbox
 
   jq -e --arg expected_type "$expected_type" --argjson expected_port "$expected_port" --arg tag_prefix "$tag_prefix" --argjson mark "$(magicnet_dns_capture_singbox_mark)" '
       ([.dns.servers[]
@@ -111,7 +150,7 @@ assert_profile_uses_proxy_detour google-dot tls 853 google
 assert_profile_uses_proxy_detour adguard-doh https 443 adguard
 assert_profile_uses_proxy_detour quad9-doh https 443 quad9
 
-MAGICNET_DNS_VIA_PROXY=0 MAGICNET_DNS_PROFILE=cloudflare-doh magicnet_dns_apply_singbox
+MAGICNET_BOOTSTRAP_DNS=aliyun MAGICNET_DNS_VIA_PROXY=0 MAGICNET_DNS_PROFILE=cloudflare-doh magicnet_dns_apply_singbox
 jq -e '
   ([.dns.servers[]
     | select(.tag == "cloudflare-profile-dns" or .tag == "cloudflare-backup-dns")
@@ -131,7 +170,7 @@ assert_profile_direct_only adguard-doh-direct https 443 adguard
 assert_profile_direct_only quad9-doh-direct https 443 quad9
 
 for direct_profile in cloudflare-udp-direct; do
-  MAGICNET_DNS_PROFILE="$direct_profile" magicnet_dns_apply_singbox
+  MAGICNET_BOOTSTRAP_DNS=aliyun MAGICNET_DNS_PROFILE="$direct_profile" magicnet_dns_apply_singbox
   jq -e --arg direct_profile "$direct_profile" '
     (if ($direct_profile | startswith("cloudflare")) then "cloudflare" else "google" end) as $tag_prefix
     | ([.dns.servers[]
@@ -145,7 +184,7 @@ for direct_profile in cloudflare-udp-direct; do
   }
 done
 
-MAGICNET_DNS_PROFILE=default magicnet_dns_apply_singbox
+MAGICNET_BOOTSTRAP_DNS=aliyun MAGICNET_DNS_PROFILE=default magicnet_dns_apply_singbox
 jq -e '
   .dns.final == "bootstrap-local-dns"
     and ([.dns.servers[] | select(.tag == "cloudflare-profile-dns" or .tag == "cloudflare-backup-dns")] | length) == 0
@@ -180,7 +219,7 @@ cat >"$MODDIR/.config/sing-box/config.json" <<'EOF'
   }
 }
 EOF
-MAGICNET_DNS_PROFILE=default magicnet_dns_apply_singbox
+MAGICNET_BOOTSTRAP_DNS=aliyun MAGICNET_DNS_PROFILE=default magicnet_dns_apply_singbox
 jq -e '
   .dns.timeout == "12s"
     and .dns.cache_capacity == 2048
@@ -202,7 +241,7 @@ if [ "$with_routing_assets" -eq 1 ]; then
   ln -s "$(command -v jq)" "$FULL_MODDIR/bin/jq"
   cp "$ROOT/src/MagicNet/.config/sing-box/config.json" "$FULL_MODDIR/.config/sing-box/config.json"
   cp -R "$ROOT/src/MagicNet/.config/sing-box/rules" "$FULL_MODDIR/.config/sing-box/"
-  MODDIR="$FULL_MODDIR" MAGICNET_DNS_PROFILE=cloudflare-udp magicnet_dns_apply_singbox
+  MODDIR="$FULL_MODDIR" MAGICNET_BOOTSTRAP_DNS=aliyun MAGICNET_DNS_PROFILE=cloudflare-udp magicnet_dns_apply_singbox
   (cd "$FULL_MODDIR/.config/sing-box" && sing-box check -c config.json -D "$FULL_MODDIR/.config/sing-box") >/dev/null
 else
   printf 'Prepared sing-box DNS asset check excluded; use --with-routing-assets to include it.\n'

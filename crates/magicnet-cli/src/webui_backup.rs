@@ -403,6 +403,9 @@ fn sourced_conf_value_is_allowed(rel: &str, key: &str, value: &str) -> bool {
         (".config/magicnet/dns.conf", "MAGICNET_DNS_VIA_PROXY") => {
             matches!(value, "0" | "1")
         }
+        (".config/magicnet/dns.conf", "MAGICNET_BOOTSTRAP_DNS") => {
+            matches!(value, "system" | "aliyun" | "baidu" | "tencent")
+        }
         (".config/magicnet/warp.conf", "MAGICNET_WARP_ENABLED") => {
             matches!(
                 value,

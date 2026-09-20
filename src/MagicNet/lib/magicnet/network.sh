@@ -531,6 +531,7 @@ magicnet_dns_leak_guard_delete_family() (
     _delete_family_cmd="$1"
     shift
     _delete_family_result=0
+    _delete_family_mark="$(magicnet_dns_capture_singbox_mark)"
     for _delete_family_iface in $1; do
         for _delete_family_port in 53 853; do
             for _delete_family_proto in udp tcp; do
@@ -538,6 +539,17 @@ magicnet_dns_leak_guard_delete_family() (
                 magicnet_dns_leak_guard_delete_rule "$_delete_family_cmd" OUTPUT \
                     -o "$_delete_family_iface" -p "$_delete_family_proto" \
                     --dport "$_delete_family_port" -j REJECT ||
+                    _delete_family_rc=$?
+                case "$_delete_family_rc" in
+                0) ;;
+                124) return 124 ;;
+                *) _delete_family_result=1 ;;
+                esac
+                _delete_family_rc=0
+                magicnet_dns_leak_guard_delete_rule "$_delete_family_cmd" OUTPUT \
+                    -o "$_delete_family_iface" -p "$_delete_family_proto" \
+                    --dport "$_delete_family_port" -m mark \
+                    --mark "$_delete_family_mark/$_delete_family_mark" -j RETURN ||
                     _delete_family_rc=$?
                 case "$_delete_family_rc" in
                 0) ;;
@@ -603,6 +615,7 @@ magicnet_enable_dns_leak_guard() {
     fi
 
     _dns_guard_rc=0
+    _dns_guard_mark="$(magicnet_dns_capture_singbox_mark)"
     _dns_guard_ipv6_mode="$(magicnet_ipv6_mode 2>/dev/null || printf '%s\n' prefer_ipv4)"
     _dns_guard_ipv6_available=0
     if [ "$_dns_guard_ipv6_mode" != ipv4_only ]; then
@@ -620,18 +633,28 @@ magicnet_enable_dns_leak_guard() {
     fi
     for _dns_guard_iface in $_dns_guard_ifaces; do
         for _dns_guard_port in 53 853; do
+            # magicnet_iptables_ensure inserts at the chain head. Install the
+            # broad rejects first so the marked exemptions end up before them.
             magicnet_iptables_ensure OUTPUT -o "$_dns_guard_iface" -p udp --dport "$_dns_guard_port" -j REJECT || _dns_guard_rc=1
             magicnet_iptables_ensure OUTPUT -o "$_dns_guard_iface" -p tcp --dport "$_dns_guard_port" -j REJECT || _dns_guard_rc=1
+            magicnet_iptables_ensure OUTPUT -o "$_dns_guard_iface" -p udp --dport "$_dns_guard_port" \
+                -m mark --mark "$_dns_guard_mark/$_dns_guard_mark" -j RETURN || _dns_guard_rc=1
+            magicnet_iptables_ensure OUTPUT -o "$_dns_guard_iface" -p tcp --dport "$_dns_guard_port" \
+                -m mark --mark "$_dns_guard_mark/$_dns_guard_mark" -j RETURN || _dns_guard_rc=1
             if [ "$_dns_guard_ipv6_available" -eq 1 ]; then
                 magicnet_ip6tables_ensure OUTPUT -o "$_dns_guard_iface" -p udp --dport "$_dns_guard_port" -j REJECT || _dns_guard_rc=1
                 magicnet_ip6tables_ensure OUTPUT -o "$_dns_guard_iface" -p tcp --dport "$_dns_guard_port" -j REJECT || _dns_guard_rc=1
+                magicnet_ip6tables_ensure OUTPUT -o "$_dns_guard_iface" -p udp --dport "$_dns_guard_port" \
+                    -m mark --mark "$_dns_guard_mark/$_dns_guard_mark" -j RETURN || _dns_guard_rc=1
+                magicnet_ip6tables_ensure OUTPUT -o "$_dns_guard_iface" -p tcp --dport "$_dns_guard_port" \
+                    -m mark --mark "$_dns_guard_mark/$_dns_guard_mark" -j RETURN || _dns_guard_rc=1
             fi
         done
     done
 
     if [ "$_dns_guard_rc" -ne 0 ]; then
         magicnet_disable_dns_leak_guard >/dev/null 2>&1 || true
-        unset _dns_guard_ifaces _dns_guard_iface _dns_guard_port
+        unset _dns_guard_ifaces _dns_guard_iface _dns_guard_port _dns_guard_mark
         unset _dns_guard_rc _dns_guard_ipv6_mode _dns_guard_ipv6_available
         return 1
     fi
@@ -651,13 +674,13 @@ magicnet_enable_dns_leak_guard() {
         magicnet_warn "Failed to persist DNS leak guard interface state"
         rm -f "$_dns_guard_state_tmp" 2>/dev/null || true
         magicnet_disable_dns_leak_guard >/dev/null 2>&1 || true
-        unset _dns_guard_ifaces _dns_guard_iface _dns_guard_port
+        unset _dns_guard_ifaces _dns_guard_iface _dns_guard_port _dns_guard_mark
         unset _dns_guard_rc _dns_guard_ipv6_mode _dns_guard_ipv6_available _dns_guard_state_file _dns_guard_state_tmp
         return 1
     fi
 
     magicnet_log "DNS leak guard blocked direct 53/853 on: $_dns_guard_ifaces"
-    unset _dns_guard_ifaces _dns_guard_iface _dns_guard_port
+    unset _dns_guard_ifaces _dns_guard_iface _dns_guard_port _dns_guard_mark
     unset _dns_guard_rc _dns_guard_ipv6_mode _dns_guard_ipv6_available _dns_guard_state_file _dns_guard_state_tmp
 }
 

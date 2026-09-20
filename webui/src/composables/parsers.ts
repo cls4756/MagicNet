@@ -196,6 +196,8 @@ export const dnsDefaults: DnsState = {
   secondary: "",
   transport: "default",
   viaProxy: true,
+  bootstrap: "aliyun",
+  bootstrapTransport: "doh",
 };
 
 export const warpDefaults: WarpState = {
