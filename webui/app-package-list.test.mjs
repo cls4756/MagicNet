@@ -165,5 +165,12 @@ test("the apps page renders names and icons and searches by both", () => {
   assert.match(page, /appIcon\(app\.info\.packageName\)/);
   assert.match(page, /packageDisplayName\(app\.info\)/);
   assert.match(page, /app\.initial/);
+  assert.match(page, /@error="markAppIconUnavailable\(app\.info\.packageName\)"/);
+  assert.match(page, /failedAppIcons\.value = new Set\(\)/);
   assert.match(page, /t\('搜索应用名称或包名'\)/);
+});
+
+test("the WebUI CSP permits KernelSU package icons", () => {
+  const index = readFileSync(new URL("./index.html", import.meta.url), "utf8");
+  assert.match(index, /img-src 'self' data: ksu:;/);
 });

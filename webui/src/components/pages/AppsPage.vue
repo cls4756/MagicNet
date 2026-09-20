@@ -48,8 +48,14 @@ type PendingAppAction = {
 const installedNames = computed(() => new Set(state.packages.map((item) => item.packageName)));
 
 const packageIconsAvailable = devicePackageIconsAvailable();
+const failedAppIcons = ref<Set<string>>(new Set());
 const appIcon = (packageName: string): string | null =>
-  packageIconUrl(packageName, packageIconsAvailable);
+  failedAppIcons.value.has(packageName) ? null : packageIconUrl(packageName, packageIconsAvailable);
+
+function markAppIconUnavailable(packageName: string): void {
+  if (failedAppIcons.value.has(packageName)) return;
+  failedAppIcons.value = new Set([...failedAppIcons.value, packageName]);
+}
 
 type ListApp = {
   info: PackageInfo;
@@ -194,6 +200,7 @@ async function refreshAppList(): Promise<void> {
   await withAction("refresh-app-list", async () => {
     // The device state becomes the source of truth again, so any unapplied edits are discarded.
     pendingLists.value = null;
+    failedAppIcons.value = new Set();
     await refreshApps();
     await refreshPackages();
   });
@@ -340,6 +347,7 @@ onMounted(() => {
                 class="size-8 shrink-0 rounded-md"
                 loading="lazy"
                 decoding="async"
+                @error="markAppIconUnavailable(app.info.packageName)"
               >
               <span v-else class="flex size-8 shrink-0 items-center justify-center rounded-md bg-[var(--mn-ivory)] text-xs font-medium text-[var(--mn-ink-muted)]" aria-hidden="true">{{ app.initial }}</span>
               <span class="grid min-w-0 gap-0.5">
@@ -390,6 +398,7 @@ onMounted(() => {
                 class="size-8 shrink-0 rounded-md"
                 loading="lazy"
                 decoding="async"
+                @error="markAppIconUnavailable(app.info.packageName)"
               >
               <span v-else class="flex size-8 shrink-0 items-center justify-center rounded-md bg-[var(--mn-ivory)] text-xs font-medium text-[var(--mn-ink-muted)]" aria-hidden="true">{{ app.initial }}</span>
               <span class="grid min-w-0 gap-0.5">

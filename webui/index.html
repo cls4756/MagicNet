@@ -13,11 +13,12 @@
       and makes no network calls (all I/O is delegated to the root CLI), so we can
       lock scripts/connections to same-origin. 'unsafe-inline' is required for the
       theme-flash script above and Vue/Tailwind inline styles; data: covers the
-      SVG favicon and Vite-inlined assets.
+      SVG favicon and Vite-inlined assets, while ksu: is the manager-local app
+      icon scheme and does not grant network access.
     -->
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'; frame-ancestors 'none'"
+      content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: ksu:; font-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'; frame-ancestors 'none'"
     />
     <title>MagicNet</title>
     <link id="magicnet-favicon" rel="icon" type="image/png" />
