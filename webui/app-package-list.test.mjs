@@ -52,6 +52,16 @@ test("app rows are searchable by display name, not only by package name", () => 
   assert.equal(packageInitial(app("com.example.blank", "")), "C");
 });
 
+test("a row with no label at all still renders as its package name", () => {
+  // Producers that only know package names must not blank the whole list: the
+  // app list rendered nothing when a display helper threw on a missing label.
+  const bare = { packageName: "com.example.bare" };
+  assert.equal(packageDisplayName(bare), "com.example.bare");
+  assert.equal(packageInitial(bare), "C");
+  assert.equal(packageMatchesQuery(bare, "example"), true);
+  assert.equal(packageDisplayName({ packageName: "com.example.n", appLabel: null }), "com.example.n");
+});
+
 test("icons are only emitted for a capable manager and a valid package name", () => {
   assert.equal(packageIconUrl("com.tencent.mm", true), "ksu://icon/com.tencent.mm");
   assert.equal(packageIconUrl("com.tencent.mm", false), null, "no bridge means no icon scheme");

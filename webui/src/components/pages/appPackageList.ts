@@ -77,8 +77,10 @@ export function mergePackageInfo(
   return merged;
 }
 
+/** A row without a usable label falls back to the package name; the list must
+ * still render when a producer only knows package names. */
 export function packageDisplayName(app: PackageInfo): string {
-  const label = app.appLabel.trim();
+  const label = typeof app.appLabel === "string" ? app.appLabel.trim() : "";
   return label || app.packageName;
 }
 

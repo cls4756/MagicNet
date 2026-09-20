@@ -330,7 +330,7 @@ onMounted(() => {
                 type="checkbox"
                 class="size-4 shrink-0 accent-[var(--mn-cactus)]"
                 :checked="isSelected(app.info.packageName, 'proxy')"
-                :aria-label="t('选择 {value}', { value: app.info.appLabel })"
+                :aria-label="t('选择 {value}', { value: packageDisplayName(app.info) })"
                 @change="toggleApp(app.info.packageName, 'proxy')"
               >
               <img
@@ -380,7 +380,7 @@ onMounted(() => {
                 type="checkbox"
                 class="size-4 shrink-0 accent-[var(--mn-cactus)]"
                 :checked="isSelected(app.info.packageName, 'direct')"
-                :aria-label="t('选择 {value}', { value: app.info.appLabel })"
+                :aria-label="t('选择 {value}', { value: packageDisplayName(app.info) })"
                 @change="toggleApp(app.info.packageName, 'direct')"
               >
               <img
