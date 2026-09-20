@@ -7,8 +7,8 @@ import Button from "@/components/ui/Button.vue";
 import Card from "@/components/ui/Card.vue";
 import ConfirmPanel from "@/components/ui/ConfirmPanel.vue";
 import InsightChip from "@/components/ui/InsightChip.vue";
-import PageHeader from "@/components/ui/PageHeader.vue";
 import SearchField from "@/components/ui/SearchField.vue";
+import ScrollBox from "@/components/ui/ScrollBox.vue";
 import { useActionLock } from "@/composables/useActionLock";
 import { devicePackageIconsAvailable } from "@/composables/devicePackages";
 import { useMagicNet } from "@/composables/useMagicNet";
@@ -224,7 +224,8 @@ onMounted(() => {
 </script>
 <template>
   <div class="grid gap-4">
-    <PageHeader :overline="t('应用策略')" :title="t('应用名单')" />
+    <!-- The section tabs already name this page, so the title stays assistive-tech only. -->
+    <h2 class="sr-only">{{ t('应用名单') }}</h2>
     <Teleport to="body">
       <Transition name="sheet">
         <div v-if="pendingAppAction" class="fixed inset-0 z-[70]" role="presentation">
@@ -284,7 +285,7 @@ onMounted(() => {
       </Transition>
     </Teleport>
 
-    <Card class="grid gap-3">
+    <Card class="mn-section-lead grid gap-3">
       <div class="flex flex-wrap items-center gap-3">
         <div class="mn-segmented">
           <button class="min-h-12 whitespace-nowrap rounded px-3 text-sm font-medium text-[var(--mn-ink-muted)] transition-colors disabled:cursor-progress disabled:opacity-60" :disabled="isRunning('mode-blacklist') || state.appPolicy.mode === 'blacklist'" :class="{ 'bg-[var(--mn-cactus)] text-[var(--mn-on-accent)]': state.appPolicy.mode === 'blacklist' }" @click="requestSetMode('blacklist')">{{ t('全局接管') }}</button>
@@ -324,7 +325,7 @@ onMounted(() => {
         {{ t('勾选后点“应用更改”才会写入并重启当前核心；在此之前不影响设备。') }}
       </p>
       <SearchField v-model="proxySearchQuery" :placeholder="t('搜索应用名称或包名')" />
-      <div class="max-h-80 overflow-y-auto overscroll-contain rounded-[var(--mn-radius-md)] border border-[var(--mn-border)] bg-[var(--mn-surface-raised)]">
+      <ScrollBox class="max-h-80 overflow-y-auto overscroll-contain rounded-[var(--mn-radius-md)] border border-[var(--mn-border)] bg-[var(--mn-surface-raised)]">
         <ul class="divide-y divide-[var(--mn-border)]">
           <li
             v-for="app in proxyListApps"
@@ -358,7 +359,7 @@ onMounted(() => {
           </li>
         </ul>
         <p v-if="!proxyListApps.length" class="mn-empty p-3">{{ state.packages.length ? t('没有匹配的应用。') : t('暂无应用，点“刷新”读取。') }}</p>
-      </div>
+      </ScrollBox>
     </Card>
 
     <!-- Direct list box -->
@@ -375,7 +376,7 @@ onMounted(() => {
         </div>
       </div>
       <SearchField v-model="directSearchQuery" :placeholder="t('搜索应用名称或包名')" />
-      <div class="max-h-80 overflow-y-auto overscroll-contain rounded-[var(--mn-radius-md)] border border-[var(--mn-border)] bg-[var(--mn-surface-raised)]">
+      <ScrollBox class="max-h-80 overflow-y-auto overscroll-contain rounded-[var(--mn-radius-md)] border border-[var(--mn-border)] bg-[var(--mn-surface-raised)]">
         <ul class="divide-y divide-[var(--mn-border)]">
           <li
             v-for="app in directListApps"
@@ -409,7 +410,7 @@ onMounted(() => {
           </li>
         </ul>
         <p v-if="!directListApps.length" class="mn-empty p-3">{{ state.packages.length ? t('没有匹配的应用。') : t('暂无应用，点“刷新”读取。') }}</p>
-      </div>
+      </ScrollBox>
     </Card>
 
     <details class="mn-disclosure" :open="policySummary.conflicts.length > 0">

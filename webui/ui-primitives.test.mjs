@@ -17,6 +17,7 @@ const primitives = [
   "components/ui/StatTile.vue",
   "components/ui/ConfirmPanel.vue",
   "components/ui/Field.vue",
+  "components/ui/ScrollBox.vue",
 ];
 
 for (const relativePath of primitives) {
@@ -37,6 +38,7 @@ for (const token of [
   ".mn-overlay",
   ".mn-choice",
   ".mn-segmented",
+  ".mn-scroll-box",
 ]) {
   assert.match(
     styles,

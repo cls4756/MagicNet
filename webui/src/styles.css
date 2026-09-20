@@ -720,6 +720,35 @@ a {
   padding: 20px;
 }
 
+/* A page whose header is hidden must not draw a rule above its first section. */
+.magic-card.mn-section-lead {
+  border-top: 0;
+}
+
+/*
+ * Overlay scrollbars (Android WebView) stay invisible until they are touched, so a
+ * bounded list looks like it cannot scroll. ScrollBox draws this rail instead whenever
+ * the platform does not reserve space for a scrollbar of its own.
+ */
+.mn-scroll-box {
+  position: relative;
+  min-width: 0;
+}
+.mn-scroll-box__rail {
+  position: absolute;
+  top: 1px;
+  right: 1px;
+  bottom: 1px;
+  width: 12px;
+  pointer-events: none;
+}
+.mn-scroll-box__thumb {
+  width: 6px;
+  margin-inline: auto;
+  border-radius: 999px;
+  background-color: var(--mn-border-strong);
+}
+
 .mn-page-heading {
   margin-block: 8px 12px;
 }

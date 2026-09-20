@@ -15,5 +15,16 @@ assert.match(styles, /\.mn-shell\s*\{[\s\S]*padding:[^;]*env\(safe-area-inset-bo
 assert.match(button, /border text-sm font-medium/, "shared buttons must own their readable text size after font inheritance");
 assert.match(apps, /min-h-12 whitespace-nowrap[\s\S]*全局接管/);
 assert.match(apps, /min-h-12 whitespace-nowrap[\s\S]*仅名单接管/);
+assert.match(apps, /<Card class="mn-section-lead grid gap-3">/, "the page opens without a divider above the first section");
+assert.match(apps, /<h2 class="sr-only">[\s\S]*t\('应用名单'\)/, "the page keeps its title for assistive tech");
+assert.doesNotMatch(
+  apps,
+  /<PageHeader/,
+  "the section tabs already name this page, so it must not repeat a page header",
+);
+assert.match(styles, /\.magic-card\.mn-section-lead\s*\{\s*border-top:\s*0;/);
+assert.equal(apps.match(/<ScrollBox /g)?.length, 2, "both app lists need the visible scroll rail");
+assert.equal(apps.match(/<\/ScrollBox>/g)?.length, 2, "every ScrollBox must be closed again");
+assert.match(styles, /\.mn-scroll-box__thumb\s*\{[\s\S]*?background-color:/);
 
 console.log("UI layout regression tests passed");
