@@ -7,8 +7,9 @@ BYPASS="$ROOT/src/MagicNet/.config/magicnet/app-bypass.list"
 APPS_SH="$ROOT/src/MagicNet/lib/magicnet/apps.sh"
 CONFIG="$ROOT/src/MagicNet/.config/sing-box/config.json"
 CLI_RULES="$ROOT/crates/magicnet-cli/src/rules.rs"
-WEBUI_INSIGHTS="$ROOT/webui/src/components/pages/appPolicyInsights.ts"
 WEBUI_APPS="$ROOT/webui/src/components/pages/AppsPage.vue"
+WEBUI_PACKAGE_LIST="$ROOT/webui/src/components/pages/appPackageList.ts"
+WEBUI_CLI="$ROOT/webui/src/composables/useMagicNet.ts"
 
 fail() {
     printf 'policy architecture failed: %s\n' "$*" >&2
@@ -19,6 +20,9 @@ fail() {
 [[ -f "$APPS_SH" ]] || fail "missing apps.sh"
 [[ -f "$CONFIG" ]] || fail "missing sing-box config.json"
 [[ -f "$CLI_RULES" ]] || fail "missing magicnet-cli rules.rs"
+[[ -f "$WEBUI_APPS" ]] || fail "missing AppsPage.vue"
+[[ -f "$WEBUI_PACKAGE_LIST" ]] || fail "missing appPackageList.ts"
+[[ -f "$WEBUI_CLI" ]] || fail "missing useMagicNet.ts"
 
 # No runtime auto-seed of domestic catalogs (function definitions only — not comments).
 if grep -Eq '^[[:space:]]*magicnet_app_bypass_ensure_critical|^[[:space:]]*magicnet_app_bypass_critical_packages' "$APPS_SH"; then
@@ -63,13 +67,10 @@ jq -e '
 # UI clients must not maintain separate package-name catalogs.
 grep -Fq 'android.net.VpnService' "$CLI_RULES" \
     || fail "CLI recommendations must query Android VpnService declarations"
-grep -Fq 'app recommendations' "$WEBUI_APPS" \
-    || fail "WebUI must load dynamic app recommendations from the CLI"
-if grep -Eq 'export const recommendedBypass[[:space:]]*=[[:space:]]*\[' "$WEBUI_INSIGHTS"; then
-    fail "WebUI must not hardcode a recommended bypass package catalog"
-fi
+grep -Fq 'app packages' "$WEBUI_CLI" \
+    || fail "WebUI must read the installed package list from the CLI"
 if grep -Ehq "^[[:space:]]*['\"][A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z][A-Za-z0-9_]*){2,}['\"],?[[:space:]]*$" \
-    "$WEBUI_INSIGHTS" "$WEBUI_APPS"; then
+    "$WEBUI_PACKAGE_LIST" "$WEBUI_APPS" "$WEBUI_CLI"; then
     fail "app-policy UI sources must not contain hardcoded Android package catalogs"
 fi
 
