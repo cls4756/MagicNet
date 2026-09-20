@@ -51,6 +51,19 @@ EOF
 . "$ROOT/src/MagicNet/lib/magicnet/subscribe_bootstrap.sh"
 . "$ROOT/src/MagicNet/lib/magicnet/dns.sh"
 
+normalized_system_dns="$(printf '%s\n' \
+  '192.168.50.1, /192.168.50.2 [2001:db8::53], [fe80::1%wlan0]' \
+  '127.0.0.1 :: ::1 192.168.50.1' |
+  magicnet_dns_normalize_server_addresses)"
+[ "$normalized_system_dns" = "$(printf '%s\n' 192.168.50.1 192.168.50.2 2001:db8::53 fe80::1)" ] || {
+  printf 'system DNS address normalization failed:\n%s\n' "$normalized_system_dns" >&2
+  exit 1
+}
+if grep -Fq 'gsub(/^[\[/]+' "$ROOT/src/MagicNet/lib/magicnet/dns.sh"; then
+  printf 'system DNS normalization must remain compatible with Android awk\n' >&2
+  exit 1
+fi
+
 assert_bootstrap_server() {
   local bootstrap="$1"
   local expected_type="$2"

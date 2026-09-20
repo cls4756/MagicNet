@@ -44,8 +44,12 @@ magicnet_dns_normalize_server_addresses() {
       {
         for (field = 1; field <= NF; field++) {
           value = $field
-          gsub(/^[\[/]+|[\],]+$/, "", value)
-          sub(/^\//, "", value)
+          while (substr(value, 1, 1) == "[" || substr(value, 1, 1) == "/") {
+            value = substr(value, 2)
+          }
+          while (substr(value, length(value), 1) == "]" || substr(value, length(value), 1) == ",") {
+            value = substr(value, 1, length(value) - 1)
+          }
           sub(/%.*/, "", value)
           if (value == "" || value == "0.0.0.0" || value == "::" || value == "::1" || value ~ /^127\./) continue
           if (value ~ /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/ || value ~ /^[0-9A-Fa-f:]+$/) {
