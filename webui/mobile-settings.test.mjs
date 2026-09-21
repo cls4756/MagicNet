@@ -64,7 +64,7 @@ test("run-page layout is scoped and short viewports retain scrolling menus", () 
   );
 });
 
-test("subscription navigation always opens subscriptions while other groups retain their last page", () => {
+test("configuration navigation always opens subscriptions while other groups retain their last page", () => {
   const selected = [];
   const scope = {
     setTab: (tab) => selected.push(tab),
@@ -73,7 +73,6 @@ test("subscription navigation always opens subscriptions while other groups reta
         configure: "config",
         run: "about",
         route: "chain",
-        settings: "domain",
         toolbox: "output",
       },
     },
@@ -85,7 +84,7 @@ test("subscription navigation always opens subscriptions while other groups reta
     .replace(": WorkspaceKey", "")
     .replace(": void", "");
   runInNewContext(source, scope);
-  for (const workspace of ["configure", "run", "route", "settings", "toolbox"])
+  for (const workspace of ["configure", "run", "route", "toolbox"])
     scope.setWorkspace(workspace);
-  assert.deepEqual(selected, ["subs", "about", "chain", "domain", "output"]);
+  assert.deepEqual(selected, ["subs", "about", "chain", "output"]);
 });

@@ -11,7 +11,6 @@ import {
   RefreshCw,
   ScrollText,
   Settings,
-  SlidersHorizontal,
   Sun,
   Wrench,
   X,
@@ -32,7 +31,7 @@ import { useMobileKeyboard } from "@/composables/useMobileKeyboard";
 import { restoreFocusAfterUpdate, trapFocusWithin } from "@/lib/focus";
 
 type TabKey = "control" | "tailscale" | "about" | "config" | "apps" | "block" | "chain" | "subs" | "dns" | "domain" | "warp" | "stack" | "tools" | "health" | "terminal" | "webui" | "output";
-type WorkspaceKey = "run" | "route" | "configure" | "settings" | "toolbox";
+type WorkspaceKey = "run" | "route" | "configure" | "toolbox";
 type OnboardingPreference = "dismissed" | "completed";
 
 type TabDefinition = {
@@ -44,7 +43,6 @@ type TabDefinition = {
 type WorkspaceDefinition = {
   key: WorkspaceKey;
   label: string;
-  mobileLabel?: string;
   icon: Component;
 };
 
@@ -88,14 +86,14 @@ const tabs: readonly TabDefinition[] = [
   { key: "apps", label: "应用分流", workspace: "route" },
   { key: "block", label: "拦截规则", workspace: "route" },
   { key: "chain", label: "链式代理", workspace: "route" },
+  { key: "domain", label: "域名转发", workspace: "route" },
+  { key: "warp", label: "WARP 出站", workspace: "route" },
+  { key: "tailscale", label: "Tailscale", workspace: "route" },
   { key: "subs", label: "订阅", workspace: "configure" },
-  { key: "tailscale", label: "Tailscale", workspace: "configure" },
+  { key: "dns", label: "DNS 配置", workspace: "configure" },
+  { key: "stack", label: "协议栈", workspace: "configure" },
   { key: "config", label: "配置文件", workspace: "configure" },
   { key: "webui", label: "管理面板", workspace: "configure" },
-  { key: "dns", label: "DNS 配置", workspace: "settings" },
-  { key: "domain", label: "域名转发", workspace: "settings" },
-  { key: "warp", label: "WARP 出站", workspace: "settings" },
-  { key: "stack", label: "协议栈", workspace: "settings" },
   { key: "health", label: "健康检查", workspace: "toolbox" },
   { key: "terminal", label: "终端", workspace: "toolbox" },
   { key: "tools", label: "维护", workspace: "toolbox" },
@@ -116,13 +114,7 @@ const workspaces: readonly WorkspaceDefinition[] = [
   {
     key: "configure",
     label: "配置",
-    mobileLabel: "订阅",
     icon: Settings,
-  },
-  {
-    key: "settings",
-    label: "设置",
-    icon: SlidersHorizontal,
   },
   {
     key: "toolbox",
@@ -173,7 +165,6 @@ const lastTabByWorkspace = ref<Record<WorkspaceKey, TabKey>>({
   run: "control",
   route: "apps",
   configure: "subs",
-  settings: "dns",
   toolbox: "health",
 });
 const showUtilityMenu = ref(false);
@@ -653,7 +644,7 @@ onUnmounted(() => {
         @click="setWorkspace(workspace.key)"
       >
         <component :is="workspace.icon" :size="19" aria-hidden="true" />
-        <span>{{ t(workspace.mobileLabel ?? workspace.label) }}</span>
+        <span>{{ t(workspace.label) }}</span>
       </button>
     </nav>
 
