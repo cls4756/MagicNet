@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { t } from "@/i18n";
-import { X } from "lucide-vue-next";
+import { Loader2, X } from "lucide-vue-next";
 import { computed } from "vue";
 import { cn } from "@/lib/utils";
 
 const props = withDefaults(
   defineProps<{
     disabled?: boolean;
+    loading?: boolean;
     title?: string;
     removeLabel?: string;
     variant?: "default" | "soft" | "dashed";
@@ -50,13 +51,15 @@ const removeClass = computed(() =>
     <span class="min-w-0 break-all"><slot /></span>
     <button
       :class="removeClass"
-      :disabled="disabled"
+      :disabled="loading || disabled"
+      :aria-busy="loading ? 'true' : undefined"
       :title="title ? t(title) : undefined"
       :aria-label="t(removeLabel || title || '移除')"
       type="button"
       @click="emit('remove', $event)"
     >
-      <slot name="icon">
+      <Loader2 v-if="loading" class="motion-safe:animate-spin" :size="14" aria-hidden="true" />
+      <slot v-else name="icon">
         <X :size="14" />
       </slot>
     </button>

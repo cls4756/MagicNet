@@ -330,15 +330,17 @@ watch(executedList, () => {
         <Terminal :size="13" aria-hidden="true" />
         {{ t("快捷命令") }}:
       </span>
-      <button
+      <Button
         v-for="cmd in quickCommands"
         :key="cmd"
-        type="button"
-        class="px-2.5 py-1 rounded-md font-mono bg-[var(--mn-surface)] border border-[var(--mn-border)] text-[var(--mn-ink)] hover:bg-[var(--mn-surface-elevated)] hover:border-[var(--mn-ink-muted)] transition-colors cursor-pointer"
+        size="sm"
+        variant="outline"
+        class="!min-h-8 !rounded-md !px-2.5 font-mono"
+        :disabled="executing || clearingHistory"
         @click="runCommandDirect(cmd)"
       >
         {{ cmd }}
-      </button>
+      </Button>
     </div>
 
     <!-- Main Terminal Card -->

@@ -26,9 +26,11 @@ const radiusSurfaces = [
   .map(read)
   .join("\n");
 
-assert.match(button, /:aria-busy="loading \? 'true' : undefined"/);
-assert.match(button, /<Loader2 v-if="loading"/);
-assert.doesNotMatch(button, /loading \? 'opacity-0'/);
+assert.match(button, /const busy = computed\(\(\) => props\.loading \|\| pending\.value\)/);
+assert.match(button, /:aria-busy="busy \? 'true' : undefined"/);
+assert.match(button, /<span v-if="busy" class="mn-button__busy"/);
+assert.match(button, /Promise\.allSettled/);
+assert.doesNotMatch(button, /busy \? 'opacity-0'/);
 
 assert.match(editorRendering, /MAX_HIGHLIGHT_CHARACTERS/);
 assert.match(editorRendering, /MAX_HIGHLIGHT_LINES/);

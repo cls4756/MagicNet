@@ -52,8 +52,9 @@ void test("shell is outcome-led rather than terminal-themed", () => {
 });
 
 void test("shared primitives preserve labels and reduce decorative copy", () => {
-  assert.match(button, /v-if="loading"/);
-  assert.doesNotMatch(button, /loading \? 'opacity-0'/);
+  assert.match(button, /v-if="busy"/);
+  assert.match(button, /t\("执行中…"\)/);
+  assert.match(button, /visibility:\s*hidden/);
   assert.doesNotMatch(pageHeader, /mn-page-kicker/);
   assert.match(pageHeader, /v-if="description"/);
 });

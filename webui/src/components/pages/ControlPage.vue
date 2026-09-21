@@ -652,25 +652,27 @@ onMounted(() => {
         </CardHeading>
 
         <div class="grid gap-3 md:grid-cols-2">
-          <button
+          <Button
             v-for="mode in wifiPolicyModes"
             :key="mode"
-            type="button"
+            variant="ghost"
             :aria-pressed="state.wifiPolicy.policyMode === mode"
             :disabled="!state.hasKsu || runtimeBusy || state.wifiPolicy.policyMode === mode"
             :class="[
-              'rounded-[var(--mn-radius-md)] border border-transparent px-4 py-3 text-left text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--mn-focus)] disabled:cursor-default',
+              '!h-auto !min-h-0 !justify-start !whitespace-normal !rounded-[var(--mn-radius-md)] !border-transparent !px-4 !py-3 text-left text-sm disabled:cursor-default',
               state.wifiPolicy.policyMode === mode
                 ? 'bg-[var(--mn-cactus)] text-[var(--mn-on-accent)]'
                 : 'bg-[color-mix(in_srgb,var(--mn-ink)_5%,transparent)] text-[var(--mn-ink-soft)] hover:bg-[color-mix(in_srgb,var(--mn-ink)_8%,transparent)]',
             ]"
             @click="setWifiPolicyMode(mode)"
           >
-            <span class="font-semibold">{{ mode === "blacklist" ? t("黑名单") : t("白名单") }}</span>
-            <span class="mt-1 block text-xs">
-              {{ mode === "blacklist" ? t("名单命中 → Direct") : t("名单命中 → Rule") }}
+            <span class="block w-full">
+              <span class="font-semibold">{{ mode === "blacklist" ? t("黑名单") : t("白名单") }}</span>
+              <span class="mt-1 block text-xs">
+                {{ mode === "blacklist" ? t("名单命中 → Direct") : t("名单命中 → Rule") }}
+              </span>
             </span>
-          </button>
+          </Button>
         </div>
 
         <div class="grid gap-3 md:grid-cols-3">
@@ -701,6 +703,7 @@ onMounted(() => {
                 :key="ssid"
                 variant="soft"
                 remove-variant="ghost"
+                :loading="isRunning(`wifi-remove-ssid-${ssid}`)"
                 :remove-label="t('移除 SSID {ssid}', { ssid: ssid })"
                 @remove="removeWifiEntry('ssid', ssid)"
               >{{ ssid }}</RemovableTag>
@@ -729,6 +732,7 @@ onMounted(() => {
                 class="font-mono"
                 variant="soft"
                 remove-variant="ghost"
+                :loading="isRunning(`wifi-remove-bssid-${bssid}`)"
                 :remove-label="t('移除 BSSID {bssid}', { bssid: bssid })"
                 @remove="removeWifiEntry('bssid', bssid)"
               >{{ bssid }}</RemovableTag>
