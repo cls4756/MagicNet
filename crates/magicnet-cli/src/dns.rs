@@ -175,6 +175,14 @@ fn update_dns_config(
         restore_dns_config(app, previous.as_deref())?;
         let _ = run_magicnet_function(app, "magicnet_dns_apply");
         let _ = restart_current_core(app);
+        let _ = run_magicnet_function(app, "magicnet_network_watch_sync");
+        return Err(error);
+    }
+    if let Err(error) = run_magicnet_function(app, "magicnet_network_watch_sync") {
+        restore_dns_config(app, previous.as_deref())?;
+        let _ = run_magicnet_function(app, "magicnet_dns_apply");
+        let _ = restart_current_core(app);
+        let _ = run_magicnet_function(app, "magicnet_network_watch_sync");
         return Err(error);
     }
     Ok(())

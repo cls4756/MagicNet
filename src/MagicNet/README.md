@@ -157,7 +157,7 @@ MagicNet 只支持显式 `tun|ebpf`，默认 `tun`。CLI 拒绝未知值，不�
 - `tun` 使用 `sing-box` `magicnet0`；`ebpf` 默认使用 hybrid，local cgroup 始终启用，热点 Proxy 且存在已确认下游接口时附加 shared TC，否则显示 shared pending。
 - 分应用策略分为三类：`Proxy` 强制走代理；`Direct` 是已接管后的 sing-box `direct` 出站；`Bypass` 让应用完全离开 MagicNet 数据面。Direct 不会被错误转换成 eBPF bypass。
 - WebUI 的“全局接管”对应黑名单语义；“仅名单接管”对应白名单语义。Root 命令行会把包名解析为 Android UID，再写入 TUN 或 eBPF local UID 边界；共享同一 UID 的应用会一起生效。
-- Android `netd` 在部分设备上会把 Bypass 应用的系统 DNS 请求统一以 UID 0 发出；存在 Bypass UID 时，DNS 捕获链会保守保留 UID 0 的 `RETURN`，避免无法归属的请求重新进入 MagicNet。
+- Android `netd` 在部分设备上会把应用的系统 DNS 请求统一以 UID 0 发出；MagicNet 不会因存在 Bypass UID 而放行 UID 0，而是继续捕获这类无法归属到原应用的 DNS，并按全局 DNS 规则与当前 Profile 解析，避免其他应用的 DNS 一并泄露。
 - `Bypass` 不等于断网或阻止访问。应用离开 MagicNet 后会使用系统上游网络；如果上游网络或另一个 VPN 能访问 Google，加入 Bypass 后的 Chrome 仍然可以访问。
 - 要验证 Chrome 没有使用 MagicNet 代理，请在 WebUI“应用策略”中选择 `Direct`，或执行 `cli app add com.android.chrome direct`。只有多 VPN 共存或明确需要完全避开 MagicNet 时才选择 `Bypass`。
 - 默认网络策略是双栈、DNS 优先 IPv4、`mixed` TUN 栈、MTU `1400` 和 UDP 会话超时 `5m`。
@@ -191,7 +191,7 @@ adb shell 'su -M -c "timeout 10 tcpdump -ni rmnet_data0 \"port 53 or port 853\""
 
 DNS 模板保留 `bootstrap-local-dns` 作为代理节点域名解析的控制面例外，避免 `default_domain_resolver` 指向代理 detour 后出现自引用循环。应用 DNS 规则会在 profile 应用时统一改写到当前 profile；因此 profile 控制应用 DNS，而 bootstrap 上游通过 `MAGICNET_BOOTSTRAP_DNS` 独立选择。
 
-WebUI 可把 Bootstrap DNS 设为 `system|aliyun|baidu|tencent`，CLI 对应 `cli dns bootstrap set <system|aliyun|baidu|tencent>`。默认保持 `aliyun`。`system` 会在应用配置时读取 Android 当前网络的 DNS 地址并生成带防回流 mark 的直连 UDP 上游，适合路由器提供的 `.lan`、`home.arpa` 等局域网域名；探测不到可用系统 DNS 时会拒绝应用，不会静默回退到公网。该地址是应用时快照，网络切换后执行 `cli dns apply` 重新读取。独立运行的 sing-box `type: local` 只读取 `/etc/resolv.conf`，不等同于 Android `netd` 原始解析，所以 MagicNet 不使用它冒充系统 DNS。
+WebUI 可把 Bootstrap DNS 设为 `system|aliyun|baidu|tencent`，CLI 对应 `cli dns bootstrap set <system|aliyun|baidu|tencent>`。默认保持 `aliyun`。`system` 会在应用配置时读取 Android 当前网络的 DNS 地址并生成带防回流 mark 的直连 UDP 上游，适合路由器提供的 `.lan`、`home.arpa` 等局域网域名；探测不到可用系统 DNS 时会拒绝应用，不会静默回退到公网。只有选择 `system` 时才启动服务 watcher，运行时主要由链路、地址和路由事件唤醒 DNS 快照，在 Wi-Fi/移动网络切换后等待地址稳定并自动执行等价于 `cli dns apply` 的重载，同时保留低频兜底检查；切换到其他 Bootstrap DNS 后 watcher 会停止。独立运行的 sing-box `type: local` 只读取 `/etc/resolv.conf`，不等同于 Android `netd` 原始解析，所以 MagicNet 不使用它冒充系统 DNS。
 
 切换到 Cloudflare DoH/DoT/UDP profile 时，应用 DNS 规则会切到由 profile 生成的 `cloudflare-profile-dns`，并保留 `cloudflare-backup-dns` 作为备用；模板中的 `doh-cloudflare`、`doh-google` 只是被重写的策略别名，不再绕过 profile 固定访问某个公共 DNS。MagicNet 自身的直连 DNS socket 使用专用 mark，DNS 捕获与可选 53/853 leak guard 只放行该 mark，不会放行普通应用 DNS，也不会让代理节点域名解析反向依赖代理自身。
 

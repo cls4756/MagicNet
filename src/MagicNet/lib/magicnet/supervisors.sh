@@ -3,7 +3,7 @@ magicnet_supervisor_target_pid_matches() (
     _mstm_pid_file="$2"
     _mstm_pid="$3"
     case "$_mstm_target" in
-    fswatch | watchdog | hotspot-watchdog) magicnet_supervisor_pidfile_matches "$_mstm_pid_file" "$_mstm_pid" ;;
+    fswatch | watchdog | hotspot-watchdog | network-watch) magicnet_supervisor_pidfile_matches "$_mstm_pid_file" "$_mstm_pid" ;;
     wifi-policy) magicnet_wifi_policy_pid_matches "$_mstm_pid" ;;
     *) return 1 ;;
     esac
@@ -15,6 +15,7 @@ magicnet_supervisor_orphan_pids() (
     fswatch) _mso_pid_file="${KAM_HOME:-$MODDIR}/.state/fswatch/$(magicnet_fswatch_name).pid" ;;
     watchdog) _mso_pid_file="${KAM_HOME:-$MODDIR}/.state/watchdog/magicnet-kernel.pid" ;;
     hotspot-watchdog) _mso_pid_file="${KAM_HOME:-$MODDIR}/.state/watchdog/$(magicnet_hotspot_watchdog_name).pid" ;;
+    network-watch) _mso_pid_file="${MODDIR}/.state/network-watch/magicnet-network-watch.pid" ;;
     wifi-policy) _mso_pid_file="$(magicnet_wifi_policy_pid_file)" ;;
     *) return 1 ;;
     esac
@@ -200,6 +201,12 @@ magicnet_supervisor_pidfile_matches() (
         _msp_expected="$_msp_root/.state/watchdog/magicnet-hotspot-route.loop.sh"
         _msp_arg1=
         _msp_arg2=
+        ;;
+    */.state/network-watch/magicnet-network-watch.pid)
+        _msp_root=${_msp_pid_file%/.state/network-watch/magicnet-network-watch.pid}
+        _msp_expected=
+        _msp_arg1=network
+        _msp_arg2=watch
         ;;
     *)
         unset _msp_pid_file _msp_pid _msp_root _msp_expected _msp_arg1 _msp_arg2
@@ -531,6 +538,69 @@ magicnet_wifi_policy_stop() {
     magicnet_supervisor_kill_orphans wifi-policy || return $?
     rm -f "$_wifi_policy_pid_file" 2>/dev/null || return 1
     return 0
+}
+
+magicnet_network_watch_pid_file() {
+    printf '%s\n' "${MODDIR}/.state/network-watch/magicnet-network-watch.pid"
+}
+
+magicnet_network_watch_required() {
+    [ "$(magicnet_dns_bootstrap 2>/dev/null || true)" = system ]
+}
+
+magicnet_network_watch_sync() {
+    if magicnet_network_watch_required; then
+        magicnet_network_watch_start
+    else
+        magicnet_network_watch_stop >/dev/null 2>&1 || true
+    fi
+}
+
+magicnet_network_watch_start() {
+    if magicnet_module_disabled || ! magicnet_kernel_running || ! magicnet_network_watch_required; then
+        magicnet_network_watch_stop >/dev/null 2>&1 || true
+        return 0
+    fi
+    [ -x "${MODDIR}/cli" ] || return 0
+    _network_watch_pid_file="$(magicnet_network_watch_pid_file)"
+    _network_watch_pid="$(sed -n '1p' "$_network_watch_pid_file" 2>/dev/null || true)"
+    if magicnet_supervisor_pidfile_matches "$_network_watch_pid_file" "$_network_watch_pid"; then
+        unset _network_watch_pid_file _network_watch_pid
+        return 0
+    else
+        _network_watch_match_rc=$?
+    fi
+    [ "$_network_watch_match_rc" -ne 2 ] || return 2
+    magicnet_supervisor_kill_orphans network-watch || return $?
+    mkdir -p "${MODDIR}/.state/network-watch" "${MODDIR}/.log" || return 1
+    magicnet_trim_log_file "${MODDIR}/.log/network-watch.log"
+    nohup "${MODDIR}/cli" network watch </dev/null >>"${MODDIR}/.log/network-watch.log" 2>&1 &
+    _network_watch_pid=$!
+    printf '%s\n' "$_network_watch_pid" >"$_network_watch_pid_file" || {
+        kill "$_network_watch_pid" 2>/dev/null || true
+        unset _network_watch_pid_file _network_watch_pid
+        return 1
+    }
+    sleep 0.05
+    if magicnet_supervisor_pidfile_matches "$_network_watch_pid_file" "$_network_watch_pid"; then
+        unset _network_watch_pid_file _network_watch_pid
+        return 0
+    fi
+    _network_watch_match_rc=$?
+    rm -f "$_network_watch_pid_file" 2>/dev/null || true
+    kill "$_network_watch_pid" 2>/dev/null || true
+    unset _network_watch_pid_file _network_watch_pid
+    [ "$_network_watch_match_rc" -ne 2 ] || return 2
+    return 1
+}
+
+magicnet_network_watch_stop() {
+    _network_watch_pid_file="$(magicnet_network_watch_pid_file)"
+    magicnet_supervisor_stop_pidfile "$_network_watch_pid_file" || return $?
+    magicnet_supervisor_kill_orphans network-watch
+    _network_watch_stop_rc=$?
+    unset _network_watch_pid_file
+    return "$_network_watch_stop_rc"
 }
 
 magicnet_wifi_policy_status() {
@@ -1254,9 +1324,10 @@ magicnet_supervisors_start() {
         magicnet_singbox_record_runtime_fingerprint ||
             magicnet_warn "Failed to record the settled sing-box configuration fingerprint."
     fi
-    for _mss_start_target in refresh wifi-policy hotspot-watchdog fswatch; do
+    for _mss_start_target in refresh network-watch wifi-policy hotspot-watchdog fswatch; do
         case "$_mss_start_target" in
         refresh) magicnet_subscription_refresh_start ;;
+        network-watch) magicnet_network_watch_start ;;
         wifi-policy) magicnet_wifi_policy_start ;;
         hotspot-watchdog) magicnet_hotspot_watchdog_start ;;
         fswatch) magicnet_fswatch_start ;;
@@ -1274,6 +1345,11 @@ magicnet_supervisors_stop() {
     _mss_stop_rc=0
     magicnet_watchdog_stop || _mss_stop_rc=$?
     magicnet_fswatch_stop || {
+        _mss_target_rc=$?
+        [ "$_mss_target_rc" -ne 2 ] || _mss_stop_rc=2
+        [ "$_mss_stop_rc" -ne 0 ] || _mss_stop_rc=1
+    }
+    magicnet_network_watch_stop || {
         _mss_target_rc=$?
         [ "$_mss_target_rc" -ne 2 ] || _mss_stop_rc=2
         [ "$_mss_stop_rc" -ne 0 ] || _mss_stop_rc=1
