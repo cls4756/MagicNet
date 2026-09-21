@@ -15,7 +15,6 @@ import Button from "@/components/ui/Button.vue";
 import Card from "@/components/ui/Card.vue";
 import CardHeading from "@/components/ui/CardHeading.vue";
 import PageHeader from "@/components/ui/PageHeader.vue";
-import Textarea from "@/components/ui/Textarea.vue";
 import { useActionLock } from "@/composables/useActionLock";
 import { useMagicNet } from "@/composables/useMagicNet";
 import {
@@ -46,11 +45,11 @@ import SubscriptionFilterCard from "./subscriptions/SubscriptionFilterCard.vue";
 import SubscriptionUserAgentCard from "./subscriptions/SubscriptionUserAgentCard.vue";
 import SubscriptionScheduleCard from "./subscriptions/SubscriptionScheduleCard.vue";
 import SubscriptionUsageList from "./subscriptions/SubscriptionUsageList.vue";
+import SubscriptionSourceList from "./subscriptions/SubscriptionSourceList.vue";
 import { buildSubscriptionUsageOverview } from "@/composables/subscriptionUsage";
 import SubscriptionLifecycleRecord from "./subscriptions/SubscriptionLifecycleRecord.vue";
 import SubscriptionLifecycleStrip from "./subscriptions/SubscriptionLifecycleStrip.vue";
 import { pendingSubscriptionDraft, takePendingSubscriptionDraft } from "./subscriptionDraft";
-import ProxyGroupsPanel from "./ProxyGroupsPanel.vue";
 
 // 默认节点过滤词与提示（清空并保存即可关闭过滤）：
 const filterPresets = ["免费", "free", "HK", "香港", "TW", "台湾"] as const;
@@ -65,6 +64,8 @@ const {
 } = useMagicNet();
 const { isRunning, withAction } = useActionLock();
 const singBoxText = ref("");
+const sourceLines = ref<string[]>([]);
+const syncingSourceRows = ref(false);
 const editorOpen = ref(false);
 const editorPanel = ref<HTMLElement | null>(null);
 const manageSourcesButton = ref<InstanceType<typeof Button> | null>(null);
@@ -79,9 +80,44 @@ const summaryCopied = ref(false);
 const subscriptionFileInput = ref<HTMLInputElement | null>(null);
 const userAgentCardRef = ref<InstanceType<typeof SubscriptionUserAgentCard> | null>(null);
 
+function parseSourceLines(value: string): string[] {
+  return value.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+}
+
+function setSourceLines(lines: string[]): void {
+  syncingSourceRows.value = true;
+  sourceLines.value = lines;
+  singBoxText.value = lines.join("\n");
+  syncingSourceRows.value = false;
+}
+
+function addSourceLine(): void {
+  if (sourceLines.value.length >= 5) return;
+  syncingSourceRows.value = true;
+  sourceLines.value = [...sourceLines.value, ""];
+  singBoxText.value = sourceLines.value.join("\n");
+  syncingSourceRows.value = false;
+}
+
+function updateSourceLine(index: number, value: string): void {
+  if (index < 0 || index >= sourceLines.value.length) return;
+  const next = sourceLines.value.slice();
+  next[index] = value;
+  setSourceLines(next);
+}
+
+function removeSourceLine(index: number): void {
+  if (sourceLines.value.length <= 1) {
+    showActionMessage(t("当前订阅接口不支持空列表，请至少保留一个来源；可以用导入文件切换到本地订阅。"));
+    return;
+  }
+  setSourceLines(sourceLines.value.filter((_, itemIndex) => itemIndex !== index));
+}
+
 function acceptOnboardingDraft(value: string | null): void {
   if (value === null) return;
   singBoxText.value = value;
+  sourceLines.value = parseSourceLines(value);
   editorOpen.value = true;
   dirty.value = true;
   loadedOnce.value = true;
@@ -126,7 +162,7 @@ async function openEditor(): Promise<void> {
   editorOpen.value = true;
   await nextTick();
   editorPanel.value?.scrollIntoView({ block: "nearest" });
-  editorPanel.value?.querySelector("textarea")?.focus({ preventScroll: true });
+  editorPanel.value?.querySelector("input")?.focus({ preventScroll: true });
 }
 
 async function closeEditor(): Promise<void> {
@@ -168,6 +204,7 @@ watch(() => state.subscriptions.singBoxUrls, (urls) => {
     syncingEditor.value = true;
     singBoxText.value = next.draft;
     syncingEditor.value = false;
+    sourceLines.value = parseSourceLines(next.draft);
   }
   lastLoadedSnapshot.value = next.lastLoadedSnapshot;
   dirty.value = next.dirty;
@@ -178,6 +215,7 @@ watch(() => state.subscriptions.singBoxUrls, (urls) => {
 
 watch(singBoxText, (value) => {
   summaryCopied.value = false;
+  if (!syncingSourceRows.value && !syncingEditor.value) sourceLines.value = parseSourceLines(value);
   if (!syncingEditor.value) {
     editRevision.value += 1;
     dirty.value = value !== lastLoadedSnapshot.value;
@@ -327,7 +365,7 @@ async function copySummary(): Promise<void> {
     <PageHeader
       :overline="t('订阅与节点')"
       :title="t('订阅管理')"
-      :description="t('集中管理订阅来源、更新状态，以及订阅导入后的节点测速与选择。')"
+      :description="t('订阅只管理来源；代理页面单独展示策略组与实际节点。')"
     >
       <template #actions>
         <Button v-if="configured" ref="manageSourcesButton" variant="outline" :aria-expanded="editorOpen" aria-controls="subscription-editor" @click="openEditor">
@@ -369,7 +407,20 @@ async function copySummary(): Promise<void> {
         </Button>
       </CardHeading>
 
-      <SubscriptionUsageList v-if="configured" :rows="usageRows" :local="state.subscriptions.sourceMode === 'local'" />
+      <SubscriptionSourceList
+        :lines="sourceLines"
+        :usage-rows="dirty ? [] : usageRows"
+        :local="state.subscriptions.sourceMode === 'local'"
+        :editable="editorOpen || !configured"
+        :disabled="lifecycleRunning"
+        @add="addSourceLine"
+        @update="updateSourceLine"
+        @remove="removeSourceLine"
+      />
+      <details v-if="configured" class="usage-details">
+        <summary>{{ t("查看订阅用量") }} <ChevronDown :size="15" /></summary>
+        <SubscriptionUsageList :rows="usageRows" :local="state.subscriptions.sourceMode === 'local'" />
+      </details>
       <p v-if="configured && state.subscriptions.sourceMode !== 'local'" class="usage-footnote">{{ t("用量与到期时间由服务商提供，更新订阅时同步。") }}</p>
 
       <section v-if="editorOpen || !configured" id="subscription-editor" ref="editorPanel" class="source-editor" :aria-label="t('编辑订阅来源')">
@@ -379,18 +430,6 @@ async function copySummary(): Promise<void> {
             <p>{{ t("粘贴订阅链接，每行一个，最多 5 个。也可导入本地文件。") }}</p>
           </div>
         </div>
-        <Textarea
-          v-model="singBoxText"
-          class="source-textarea"
-          spellcheck="false"
-          autocomplete="off"
-          autocapitalize="none"
-          autocorrect="off"
-          inputmode="url"
-          placeholder="https://example.com/subscription"
-          :aria-label="t('sing-box 订阅 URL，每行一个')"
-          aria-describedby="subscription-validation"
-        />
         <div id="subscription-validation" class="editor-validation" role="status" :data-error="savePlan.status === 'error'">
           <span>{{ savePlan.status === 'idle' ? t("支持 HTTPS 订阅链接") : savePlan.message }}</span>
           <span v-if="inputSummary.duplicate || inputSummary.overLimit">{{ t("有效 {value} · 重复 {value2} · 超限 {value3}", { value: inputSummary.valid, value2: inputSummary.duplicate, value3: inputSummary.overLimit }) }}</span>
@@ -421,8 +460,6 @@ async function copySummary(): Promise<void> {
         </details>
       </section>
     </Card>
-
-    <ProxyGroupsPanel v-if="configured" />
 
     <Card class="subscription-settings !p-4 md:!p-6">
       <CardHeading
@@ -457,10 +494,14 @@ async function copySummary(): Promise<void> {
 .subscription-feedback { margin: 0; border: 1px solid var(--mn-border); border-radius: var(--mn-radius-sm); padding: 12px 16px; color: var(--mn-ink-soft); background: var(--mn-surface-sunken); font-size: .875rem; line-height: 1.65; overflow-wrap: anywhere; }
 .subscription-feedback[data-error="true"] { color: var(--mn-warning); }
 .usage-footnote { margin: 0; color: var(--mn-ink-muted); font-size: .8125rem; line-height: 1.6; }
+.usage-details { border-top: 1px solid var(--mn-border); }
+.usage-details > summary { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 48px; cursor: pointer; list-style: none; color: var(--mn-ink-soft); font-size: .875rem; }
+.usage-details > summary::-webkit-details-marker { display: none; }
+.usage-details > summary > svg { color: var(--mn-ink-muted); }
+.usage-details[open] > summary > svg { transform: rotate(180deg); }
 .source-editor { padding-top: 20px; border-top: 1px solid var(--mn-border); scroll-margin-top: 120px; }
 .editor-heading h3 { margin: 0; font-size: 1rem; font-weight: 600; }
 .editor-heading p { margin: 8px 0 0; color: var(--mn-ink-muted); font-size: .875rem; line-height: 1.65; }
-.source-textarea { margin-top: 20px; min-height: 144px; font-size: max(16px, .875rem); line-height: 1.7; overflow-wrap: anywhere; }
 .editor-validation { display: flex; flex-wrap: wrap; gap: 6px 16px; margin: 10px 0 18px; color: var(--mn-ink-muted); font-size: .8125rem; }
 .editor-validation[data-error="true"] { color: var(--mn-danger); }
 .editor-actions, .source-import-actions, .source-save-actions, .preview-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }

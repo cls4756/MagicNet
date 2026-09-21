@@ -30,7 +30,7 @@ import { useTheme } from "@/composables/useTheme";
 import { useMobileKeyboard } from "@/composables/useMobileKeyboard";
 import { restoreFocusAfterUpdate, trapFocusWithin } from "@/lib/focus";
 
-type TabKey = "control" | "tailscale" | "about" | "config" | "apps" | "block" | "chain" | "subs" | "dns" | "domain" | "warp" | "stack" | "tools" | "health" | "terminal" | "webui" | "output";
+type TabKey = "control" | "tailscale" | "about" | "config" | "apps" | "block" | "chain" | "subs" | "proxy" | "dns" | "domain" | "warp" | "stack" | "tools" | "health" | "terminal" | "webui" | "output";
 type WorkspaceKey = "run" | "route" | "configure" | "toolbox";
 type OnboardingPreference = "dismissed" | "completed";
 
@@ -57,6 +57,7 @@ const pageLoaders: Record<TabKey, () => Promise<{ default: Component }>> = {
   block: () => import("@/components/pages/BlocklistPage.vue"),
   chain: () => import("@/components/pages/ProxyChainPage.vue"),
   subs: () => import("@/components/pages/SubscriptionsPage.vue"),
+  proxy: () => import("@/components/pages/ProxyPage.vue"),
   dns: () => import("@/components/pages/SettingsDnsPage.vue"),
   domain: () => import("@/components/pages/SettingsDomainForwardPage.vue"),
   warp: () => import("@/components/pages/SettingsWarpPage.vue"),
@@ -90,6 +91,7 @@ const tabs: readonly TabDefinition[] = [
   { key: "warp", label: "WARP 出站", workspace: "route" },
   { key: "tailscale", label: "Tailscale", workspace: "route" },
   { key: "subs", label: "订阅", workspace: "configure" },
+  { key: "proxy", label: "代理", workspace: "configure" },
   { key: "dns", label: "DNS 配置", workspace: "configure" },
   { key: "stack", label: "协议栈", workspace: "configure" },
   { key: "config", label: "配置文件", workspace: "configure" },

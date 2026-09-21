@@ -13,8 +13,12 @@ test("native /proxies groups expose all members for selection and group testing"
     },
   }));
   assert.deepEqual(snapshot.groups, [
-    { name: "proxy", type: "Selector", now: "auto", proxies: ["auto", "US node", "日本"] },
-    { name: "auto", type: "URLTest", now: "US node", proxies: ["US node", "日本"] },
+    { name: "proxy", type: "Selector", now: "auto", proxies: ["auto", "US node", "日本"], kind: "selector", selectable: true },
+    { name: "auto", type: "URLTest", now: "US node", proxies: ["US node", "日本"], kind: "auto", selectable: false },
+  ]);
+  assert.deepEqual(snapshot.nodes, [
+    { name: "日本", type: "Shadowsocks" },
+    { name: "US node", type: "Shadowsocks" },
   ]);
   const plan = buildProxySelectionPlan(snapshot.groups[0], "US node", [{
     node: "US node", summary: "40ms", delayMillis: 40, quality: "fast",
@@ -24,7 +28,7 @@ test("native /proxies groups expose all members for selection and group testing"
 });
 
 test("provider and legacy group responses retain proxies member support", () => {
-  const group = { name: "provider", type: "provider", now: "", proxies: ["one", "two"] };
+  const group = { name: "provider", type: "provider", now: "", proxies: ["one", "two"], kind: "provider", selectable: false };
   const source = { proxies: ["one", { name: "two" }, null, 12, {}] };
   assert.deepEqual(
     parseProxyGroupsSnapshot(JSON.stringify({ providers: { provider: source } })).groups,
@@ -47,5 +51,5 @@ test("invalid snapshot roots are rejected while an empty proxies map is valid", 
   for (const source of ["null", "false", "42", '"text"', "[]", "not json"]) {
     assert.equal(parseProxyGroupsSnapshot(source), null, source);
   }
-  assert.deepEqual(parseProxyGroupsSnapshot('{"proxies":{}}'), { groups: [] });
+  assert.deepEqual(parseProxyGroupsSnapshot('{"proxies":{}}'), { groups: [], nodes: [] });
 });
