@@ -386,7 +386,7 @@ export default {
   "未知": ["Unknown", "Неизвестно"],
   "代理": ["Proxy", "Прокси"],
   "运行选择": ["Runtime selection", "Выбор во время работы"],
-  "订阅只管理来源；代理页面单独展示策略组与实际节点。": ["Subscriptions manage sources; the Proxy page separately shows groups and actual nodes.", "Подписки управляют источниками; на странице прокси отдельно показаны группы и реальные узлы."],
+  "订阅负责提供来源，代理页面负责查看实际节点、策略组并切换当前节点。": ["Subscriptions provide sources; the Proxy page is where you view actual nodes and groups and switch the current node.", "Подписки предоставляют источники; на странице прокси вы просматриваете реальные узлы и группы и переключаете текущий узел."],
   "订阅来源列表": ["Subscription source list", "Список источников подписок"],
   "订阅来源": ["Subscription sources", "Источники подписок"],
   "当前使用本地文件；如需切换 URL 订阅，请导入新的订阅来源。": ["A local file is active. Import a new source to switch to URL subscriptions.", "Используется локальный файл. Импортируйте новый источник, чтобы перейти на URL-подписки."],
