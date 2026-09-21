@@ -9,6 +9,7 @@ test("native /proxies groups expose all members for selection and group testing"
       proxy: { type: "Selector", now: "auto", all: ["auto", "US node", "日本"] },
       auto: { type: "URLTest", now: "US node", all: ["US node", "日本"] },
       "US node": { type: "Shadowsocks", history: [] },
+      "日本": { type: "Shadowsocks", history: [] },
       direct: { type: "Direct" },
     },
   }));
@@ -17,8 +18,8 @@ test("native /proxies groups expose all members for selection and group testing"
     { name: "auto", type: "URLTest", now: "US node", proxies: ["US node", "日本"], kind: "auto", selectable: false },
   ]);
   assert.deepEqual(snapshot.nodes, [
-    { name: "日本", type: "Shadowsocks" },
     { name: "US node", type: "Shadowsocks" },
+    { name: "日本", type: "Shadowsocks" },
   ]);
   const plan = buildProxySelectionPlan(snapshot.groups[0], "US node", [{
     node: "US node", summary: "40ms", delayMillis: 40, quality: "fast",
