@@ -70,6 +70,21 @@ magicnet_udp_timeout() {
     unset _udp_timeout
 }
 
+magicnet_dns_interception() {
+    _dns_interception="${MAGICNET_DNS_INTERCEPTION:-}"
+    [ -n "$_dns_interception" ] ||
+        _dns_interception="$(magicnet_network_policy_value MAGICNET_DNS_INTERCEPTION 2>/dev/null || true)"
+    if [ -z "$_dns_interception" ] && [ -n "${MAGIC_DNS_CAPTURE+x}" ]; then
+        _dns_interception="$MAGIC_DNS_CAPTURE"
+    fi
+    case "$_dns_interception" in
+        0 | false | no | off | disabled) _dns_interception=off ;;
+        *) _dns_interception=on ;;
+    esac
+    printf '%s\n' "$_dns_interception"
+    unset _dns_interception
+}
+
 magicnet_singbox_dns_strategy_for_mode() {
     magicnet_ipv6_mode
 }

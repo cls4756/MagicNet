@@ -13,10 +13,12 @@ const { isRunning, withAction } = useActionLock();
 const ipv6Mode = ref("prefer_ipv4");
 const mtu = ref("1400");
 const udpTimeout = ref("5m");
+const dnsInterception = ref<"on" | "off">("on");
 const effectiveMode = ref("unavailable");
 const effectiveStack = ref("unavailable");
 const effectiveMtu = ref("unavailable");
 const effectiveUdpTimeout = ref("unavailable");
+const effectiveDnsInterception = ref("unavailable");
 
 
 const modeHint = computed(() => {
@@ -31,15 +33,17 @@ async function refreshStatus(silent = false): Promise<void> {
   ipv6Mode.value = status.configured.ipv6_mode;
   mtu.value = String(status.configured.mtu);
   udpTimeout.value = status.configured.udp_timeout;
+  dnsInterception.value = status.configured.dns_interception;
   effectiveMode.value = status.effective.ipv6_mode;
   effectiveStack.value = status.effective.stack;
   effectiveMtu.value = status.effective.mtu === null ? "unavailable" : String(status.effective.mtu);
   effectiveUdpTimeout.value = status.effective.udp_timeout;
+  effectiveDnsInterception.value = status.effective.dns_interception;
 }
 
 async function applyPolicy(): Promise<void> {
   await withAction("network-policy", async () => {
-    const command = `network set ${ipv6Mode.value} ${mtu.value} ${udpTimeout.value}`;
+    const command = `network set ${ipv6Mode.value} ${mtu.value} ${udpTimeout.value} ${dnsInterception.value}`;
     const output = await runCli(command, t("应用 UDP / IPv6 策略"));
     if (!execFailed(output)) await refreshStatus(true);
   });
@@ -65,6 +69,13 @@ onMounted(() => void refreshStatus(true));
       {{ modeHint }}
     </p>
     <div class="grid gap-3 sm:grid-cols-2">
+      <label class="grid gap-1 text-xs text-[var(--mn-ink-muted)]">
+        {{ t("DNS 劫持") }}
+        <select v-model="dnsInterception" class="h-10 rounded-md border bg-transparent px-3 text-sm text-[var(--mn-ink)]">
+          <option value="on">{{ t("开启（推荐）") }}</option>
+          <option value="off">{{ t("关闭，使用系统 DNS") }}</option>
+        </select>
+      </label>
       <label class="grid gap-1 text-xs text-[var(--mn-ink-muted)]">
         TUN MTU
         <select v-model="mtu" class="h-10 rounded-md border bg-transparent px-3 text-sm text-[var(--mn-ink)]">
@@ -97,5 +108,6 @@ onMounted(() => void refreshStatus(true));
 effective_stack={{ effectiveStack }}
 effective_mtu={{ effectiveMtu }}
 effective_udp_timeout={{ effectiveUdpTimeout }}</pre>
+    <pre class="overflow-auto rounded-md bg-[var(--mn-carrier-deep)] p-3 text-xs leading-6 text-[var(--mn-ink-soft)]">dns_interception={{ effectiveDnsInterception }}</pre>
   </Card>
 </template>

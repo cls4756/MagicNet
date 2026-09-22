@@ -12,7 +12,7 @@ use crate::diagnostics_routing::routing_policy_check;
 use crate::{
     clean_module_lines, cmdline_has_command, cmdline_has_script, command_text_timeout,
     ebpf_runtime::inspect_ebpf_attachments, mcp, pid_summary, read_proc_argv,
-    run_magicnet_function, singbox_pid_summary, App,
+    read_kv, run_magicnet_function, singbox_pid_summary, App,
 };
 
 pub(crate) fn health(app: &App) -> Result<(), String> {
@@ -762,6 +762,9 @@ fn dns_capture_runtime_check(
     app: &App,
     mode: &Result<TransparentModeSelection, String>,
 ) -> (bool, String) {
+    if !dns_interception_enabled(app) {
+        return (true, "disabled-by-policy".to_string());
+    }
     let selection = match mode {
         Ok(selection) => *selection,
         Err(_) => return (false, "unknown-mode".to_string()),
@@ -799,6 +802,15 @@ fn dns_capture_runtime_check(
     (
         ipv4_ok && ipv6_ok,
         format!("ipv4:{ipv4_detail},ipv6:{ipv6_detail}"),
+    )
+}
+
+fn dns_interception_enabled(app: &App) -> bool {
+    !matches!(
+        read_kv(app.moddir.join(".config/magicnet/network-policy.conf"))
+            .get("MAGICNET_DNS_INTERCEPTION")
+            .map(String::as_str),
+        Some("off") | Some("0") | Some("false") | Some("disabled")
     )
 }
 
@@ -1068,7 +1080,7 @@ fn ebpf_dataplane_check(app: &App, source: TransparentModeSource) -> (bool, Stri
     } else {
         effective.shared_interfaces.join(",")
     };
-    if local_effective && effective.local_dns_mode != "hijack" {
+    if dns_interception_enabled(app) && local_effective && effective.local_dns_mode != "hijack" {
         return (
             false,
             format!(

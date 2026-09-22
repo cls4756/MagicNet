@@ -11,8 +11,8 @@ export type MachineEnvelope<T extends Record<string, unknown>> = {
 };
 
 export type NetworkPolicyStatus = {
-  configured: { ipv6_mode: string; mtu: number; udp_timeout: string };
-  effective: { ipv6_mode: string; stack: string; mtu: number | null; udp_timeout: string };
+  configured: { ipv6_mode: string; mtu: number; udp_timeout: string; dns_interception: "on" | "off" };
+  effective: { ipv6_mode: string; stack: string; mtu: number | null; udp_timeout: string; dns_interception: "on" | "off" | "unavailable" };
 };
 export type DomainForwardStatus = {
   configured: "enabled" | "disabled";
@@ -133,6 +133,8 @@ export function parseMachineNetwork(text: string): NetworkPolicyStatus | null {
   const data = decodeMachineData(text, "network.status");
   if (!data || !isRecord(data.configured) || !isRecord(data.effective)) return null;
   const { configured, effective } = data;
+  const configuredDnsInterception = configured.dns_interception ?? "on";
+  const effectiveDnsInterception = effective.dns_interception ?? "unavailable";
   if (
     typeof configured.ipv6_mode !== "string" ||
     !["ipv4_only", "prefer_ipv4", "prefer_ipv6"].includes(configured.ipv6_mode) ||
@@ -140,15 +142,17 @@ export function parseMachineNetwork(text: string): NetworkPolicyStatus | null {
     configured.mtu < 1280 || configured.mtu > 1500 ||
     typeof configured.udp_timeout !== "string" ||
     !["1m", "3m", "5m", "10m", "15m", "30m"].includes(configured.udp_timeout) ||
+    typeof configuredDnsInterception !== "string" || !["on", "off"].includes(configuredDnsInterception) ||
     typeof effective.ipv6_mode !== "string" || !effective.ipv6_mode ||
     typeof effective.stack !== "string" || !effective.stack ||
     (effective.mtu !== null && (typeof effective.mtu !== "number" ||
       !Number.isSafeInteger(effective.mtu) || effective.mtu <= 0)) ||
-    typeof effective.udp_timeout !== "string" || !effective.udp_timeout
+    typeof effective.udp_timeout !== "string" || !effective.udp_timeout ||
+    typeof effectiveDnsInterception !== "string" || !["on", "off", "unavailable"].includes(effectiveDnsInterception)
   ) return null;
   return {
-    configured: { ipv6_mode: configured.ipv6_mode, mtu: configured.mtu, udp_timeout: configured.udp_timeout },
-    effective: { ipv6_mode: effective.ipv6_mode, stack: effective.stack, mtu: effective.mtu, udp_timeout: effective.udp_timeout },
+    configured: { ipv6_mode: configured.ipv6_mode, mtu: configured.mtu, udp_timeout: configured.udp_timeout, dns_interception: configuredDnsInterception as "on" | "off" },
+    effective: { ipv6_mode: effective.ipv6_mode, stack: effective.stack, mtu: effective.mtu, udp_timeout: effective.udp_timeout, dns_interception: effectiveDnsInterception as "on" | "off" | "unavailable" },
   };
 }
 

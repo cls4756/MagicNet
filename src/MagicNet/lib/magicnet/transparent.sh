@@ -81,6 +81,7 @@ magicnet_singbox_apply_transparent_mode() {
         return 1
     }
     _dns_strategy="$(magicnet_singbox_dns_strategy_for_mode "$_config" "tun")"
+    _dns_interception="$(magicnet_dns_interception)"
     _tun_mtu="$(magicnet_tun_mtu)"
     _udp_timeout="$(magicnet_udp_timeout)"
     _jq="${MODDIR}/bin/jq"
@@ -135,6 +136,7 @@ magicnet_singbox_apply_transparent_mode() {
         "$_jq" \
             --arg mode "$_mode" \
             --arg dns_strategy "$_dns_strategy" \
+            --arg dns_interception "$_dns_interception" \
             --argjson tun_mtu "$_tun_mtu" \
             --arg udp_timeout "$_udp_timeout" \
             --argjson shared_interfaces "$_interfaces_json" \
@@ -162,13 +164,13 @@ magicnet_singbox_apply_transparent_mode() {
             "type":"ebpf","tag":"tun-in","mode":"hybrid",
             "network":["tcp","udp"],"udp_timeout":$udp_timeout,
             "local":{
-              "dns_mode":"hijack",
+              "dns_mode":(if $dns_interception == "on" then "hijack" else "off" end),
               "ipv6":($dns_strategy != "ipv4_only"),
               "bypass_private_address":true,
               "exclude_uid":[0]
             },
             "shared":{
-              "dns_mode":"respect_policy",
+              "dns_mode":(if $dns_interception == "on" then "respect_policy" else "off" end),
               "interface":$shared_interfaces,
               "ipv6":($dns_strategy != "ipv4_only"),
               "bypass_private_address":true,
@@ -199,19 +201,23 @@ magicnet_singbox_apply_transparent_mode() {
         def is_sniff_rule: (.action // "") == "sniff";
         def normalize_sniff_rule: if (.action // "") == "sniff" then .inbound = ["mixed-in","tun-in"] else . end;
         def sniff_rule: {"inbound":["mixed-in","tun-in"],"action":"sniff"};
-        .inbounds = (((.inbounds // []) | map(select(managed_inbound | not))) + [mixed_in,dns_in,(if $mode == "ebpf" then ebpf_in else tun_in end)])
+        .inbounds = (((.inbounds // []) | map(select(managed_inbound | not)))
+          + [mixed_in]
+          + (if $dns_interception == "on" then [dns_in] else [] end)
+          + [(if $mode == "ebpf" then ebpf_in else tun_in end)])
         | .route.rules = (
           ((.route.rules // [])
             | map(select(references_managed_inbound | not))
             | map(select(is_managed_ipv6_guard | not))
             | map(select(is_ebpf_dns_hijack_rule | not))
             | map(normalize_sniff_rule)) as $rules
-          | ([dns_hijack_rule] + (if $mode == "ebpf" then [ebpf_dns_hijack_rule] else [] end)
+          | ((if $dns_interception == "on" then [dns_hijack_rule] else [] end)
+              + (if $dns_interception == "on" and $mode == "ebpf" then [ebpf_dns_hijack_rule] else [] end)
               + (if any($rules[]?; is_sniff_rule) then $rules else [sniff_rule] + $rules end)) as $managed_rules
           | if $dns_strategy == "ipv4_only" then
               [$managed_rules[] | select(is_sniff_rule)]
-              + [dns_hijack_rule]
-              + (if $mode == "ebpf" then [ebpf_dns_hijack_rule] else [] end)
+              + (if $dns_interception == "on" then [dns_hijack_rule] else [] end)
+              + (if $dns_interception == "on" and $mode == "ebpf" then [ebpf_dns_hijack_rule] else [] end)
               + [$managed_rules[] | select(is_icmp_block_rule)]
               + [ipv6_reject_rule]
               + [$managed_rules[] | select((is_sniff_rule or is_dns_hijack_rule or is_icmp_block_rule or is_managed_ipv6_guard) | not)]
@@ -226,14 +232,14 @@ magicnet_singbox_apply_transparent_mode() {
         }
     else
         rm -f "$_tmp" "$_pairs" 2>/dev/null || true
-        unset _config _mode _dns_strategy _tun_mtu _udp_timeout _jq _tmp _pairs _interfaces_json _sources_json _mode_state_dir _mode_state_tmp _current_inbound _current_type _saved_file _saved_inbound
+        unset _config _mode _dns_strategy _dns_interception _tun_mtu _udp_timeout _jq _tmp _pairs _interfaces_json _sources_json _mode_state_dir _mode_state_tmp _current_inbound _current_type _saved_file _saved_inbound
         return 1
     fi
     rm -f "$_pairs" 2>/dev/null || true
     import __singbox__
     singbox_prepare_route_config "$_config" || true
     magicnet_singbox_apply_domain_forward "$_config" || true
-    unset _config _mode _dns_strategy _tun_mtu _udp_timeout _jq _tmp _pairs _interfaces_json _sources_json _mode_state_dir _mode_state_tmp _current_inbound _current_type _saved_file _saved_inbound
+    unset _config _mode _dns_strategy _dns_interception _tun_mtu _udp_timeout _jq _tmp _pairs _interfaces_json _sources_json _mode_state_dir _mode_state_tmp _current_inbound _current_type _saved_file _saved_inbound
 }
 
 magicnet_transparent_capability_file() {

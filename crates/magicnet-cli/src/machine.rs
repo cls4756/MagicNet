@@ -309,6 +309,13 @@ fn network_status_value(app: &App) -> Value {
             .map(String::as_str)
             .unwrap_or_default(),
     );
+    let configured_dns_interception = match values
+        .get("MAGICNET_DNS_INTERCEPTION")
+        .map(String::as_str)
+    {
+        Some("off") | Some("0") | Some("false") | Some("disabled") => "off",
+        _ => "on",
+    };
 
     let effective =
         crate::utils::read_json_file_bounded(&app.moddir.join(SINGBOX_CONFIG), 4 * 1024 * 1024);
@@ -336,6 +343,38 @@ fn network_status_value(app: &App) -> Value {
         .and_then(|tun| tun.get("udp_timeout"))
         .and_then(Value::as_str)
         .unwrap_or("unavailable");
+    let effective_dns_interception = effective
+        .as_ref()
+        .and_then(|config| config.get("inbounds"))
+        .and_then(Value::as_array)
+        .and_then(|inbounds| {
+            if inbounds.iter().any(|inbound| {
+                inbound.get("tag").and_then(Value::as_str) == Some("magicnet-dns-in")
+            }) {
+                return Some("on");
+            }
+            let managed = inbounds.iter().find(|inbound| {
+                inbound.get("tag").and_then(Value::as_str) == Some("tun-in")
+            })?;
+            match managed.get("type").and_then(Value::as_str) {
+                Some("tun") => Some("off"),
+                Some("ebpf") => {
+                    let local = managed
+                        .get("local")
+                        .and_then(Value::as_object)
+                        .and_then(|value| value.get("dns_mode"))
+                        .and_then(Value::as_str);
+                    let shared = managed
+                        .get("shared")
+                        .and_then(Value::as_object)
+                        .and_then(|value| value.get("dns_mode"))
+                        .and_then(Value::as_str);
+                    (local == Some("off") && shared == Some("off")).then_some("off")
+                }
+                _ => None,
+            }
+        })
+        .unwrap_or("unavailable");
 
     envelope(
         "network.status",
@@ -344,12 +383,14 @@ fn network_status_value(app: &App) -> Value {
                 "ipv6_mode": configured_ipv6_mode,
                 "mtu": configured_mtu,
                 "udp_timeout": configured_udp_timeout,
+                "dns_interception": configured_dns_interception,
             },
             "effective": {
                 "ipv6_mode": effective_ipv6_mode,
                 "stack": effective_stack,
                 "mtu": effective_mtu,
                 "udp_timeout": effective_udp_timeout,
+                "dns_interception": effective_dns_interception,
             }
         }),
     )

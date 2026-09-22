@@ -2,10 +2,15 @@ use std::fs;
 
 use serde_json::Value;
 
-use crate::App;
+use crate::{read_kv, App};
 
 pub(super) fn dns_leak_check(app: &App, singbox: &str, mode: &str) -> (bool, String) {
-    let transparent_dns = true;
+    let transparent_dns = !matches!(
+        read_kv(app.moddir.join(".config/magicnet/network-policy.conf"))
+            .get("MAGICNET_DNS_INTERCEPTION")
+            .map(String::as_str),
+        Some("off") | Some("0") | Some("false") | Some("disabled")
+    );
     let cfg = singbox_dns_config(app, mode, transparent_dns);
     let core = if singbox != "stopped" {
         "sing-box"
@@ -68,12 +73,11 @@ impl SingboxDnsConfig {
     fn ok(self) -> bool {
         self.valid_json
             && self.fake_ip_disabled
-            && self.hijack
+            && (!self.transparent_dns || self.hijack)
             && self.remote_dns
             && self.store_fake_ip_disabled
             && self.sniff_inbound
             && self.ipv6_guard.ok()
-            && self.transparent_dns
     }
 }
 

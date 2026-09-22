@@ -1,22 +1,23 @@
 <script setup lang="ts">
 import {
   Bug,
-  Gauge,
-  GitBranch,
+  CloudDownload,
   Github,
+  LayoutDashboard,
   MessageCircle,
   Monitor,
   Moon,
   MoreHorizontal,
   RefreshCw,
+  Router,
   ScrollText,
   Settings,
   Sun,
-  Wrench,
   X,
 } from "lucide-vue-next";
 import { computed, defineAsyncComponent, nextTick, onMounted, onUnmounted, ref, type Component } from "vue";
 import { t } from "@/i18n";
+import { SETTINGS_ROUTES, type SettingsRoute } from "@/components/pages/settingsRoutes";
 import LanguageSelect from "@/components/LanguageSelect.vue";
 import { MAGICNET_LOGO_URL } from "@/branding";
 import IssueReporterDialog from "@/components/IssueReporterDialog.vue";
@@ -30,15 +31,8 @@ import { useTheme } from "@/composables/useTheme";
 import { useMobileKeyboard } from "@/composables/useMobileKeyboard";
 import { restoreFocusAfterUpdate, trapFocusWithin } from "@/lib/focus";
 
-type TabKey = "control" | "tailscale" | "about" | "config" | "apps" | "block" | "chain" | "subs" | "proxy" | "dns" | "domain" | "warp" | "stack" | "tools" | "health" | "terminal" | "webui" | "output";
-type WorkspaceKey = "run" | "route" | "configure" | "toolbox";
+type WorkspaceKey = "dashboard" | "nodes" | "subs" | "settings";
 type OnboardingPreference = "dismissed" | "completed";
-
-type TabDefinition = {
-  key: TabKey;
-  label: string;
-  workspace: WorkspaceKey;
-};
 
 type WorkspaceDefinition = {
   key: WorkspaceKey;
@@ -48,82 +42,53 @@ type WorkspaceDefinition = {
 
 const ONBOARDING_STORAGE_KEY = "magicnet.webui.onboarding.v1";
 
-const pageLoaders: Record<TabKey, () => Promise<{ default: Component }>> = {
-  control: () => import("@/components/pages/ControlPage.vue"),
-  about: () => import("@/components/pages/AboutPage.vue"),
-  tailscale: () => import("@/components/pages/TailscalePage.vue"),
-  config: () => import("@/components/pages/ConfigPage.vue"),
-  apps: () => import("@/components/pages/AppsPage.vue"),
-  block: () => import("@/components/pages/BlocklistPage.vue"),
-  chain: () => import("@/components/pages/ProxyChainPage.vue"),
+const workspaceLoaders: Record<WorkspaceKey, () => Promise<{ default: Component }>> = {
+  dashboard: () => import("@/components/pages/DashboardPage.vue"),
+  nodes: () => import("@/components/pages/NodesPage.vue"),
   subs: () => import("@/components/pages/SubscriptionsPage.vue"),
-  proxy: () => import("@/components/pages/ProxyPage.vue"),
-  dns: () => import("@/components/pages/SettingsDnsPage.vue"),
-  domain: () => import("@/components/pages/SettingsDomainForwardPage.vue"),
-  warp: () => import("@/components/pages/SettingsWarpPage.vue"),
-  stack: () => import("@/components/pages/SettingsStackPage.vue"),
-  tools: () => import("@/components/pages/ToolsPage.vue"),
-  webui: () => import("@/components/pages/WebuiPage.vue"),
-  health: () => import("@/components/pages/DiagnosticsPage.vue"),
-  terminal: () => import("@/components/pages/TerminalPage.vue"),
-  output: () => import("@/components/pages/OutputPage.vue"),
+  settings: () => import("@/components/pages/SettingsHubPage.vue"),
 };
 
-/** Lazy page components keep inactive workspaces off the first-load critical path. */
+/** Lazy workspace components keep inactive areas off the first-load critical path. */
 const asyncPages = Object.fromEntries(
-  (Object.keys(pageLoaders) as TabKey[]).map((key) => [
+  (Object.keys(workspaceLoaders) as WorkspaceKey[]).map((key) => [
     key,
     defineAsyncComponent({
-      loader: pageLoaders[key],
+      loader: workspaceLoaders[key],
       delay: 80,
       timeout: 20000,
     }),
   ]),
-) as Record<TabKey, Component>;
-
-const tabs: readonly TabDefinition[] = [
-  { key: "control", label: "概览", workspace: "run" },
-  { key: "about", label: "流量路径", workspace: "run" },
-  { key: "apps", label: "应用分流", workspace: "route" },
-  { key: "block", label: "拦截规则", workspace: "route" },
-  { key: "chain", label: "链式代理", workspace: "route" },
-  { key: "domain", label: "域名转发", workspace: "route" },
-  { key: "warp", label: "WARP 出站", workspace: "route" },
-  { key: "tailscale", label: "Tailscale", workspace: "route" },
-  { key: "subs", label: "订阅", workspace: "configure" },
-  { key: "proxy", label: "代理", workspace: "configure" },
-  { key: "dns", label: "DNS 配置", workspace: "configure" },
-  { key: "stack", label: "协议栈", workspace: "configure" },
-  { key: "config", label: "配置文件", workspace: "configure" },
-  { key: "webui", label: "管理面板", workspace: "configure" },
-  { key: "health", label: "健康检查", workspace: "toolbox" },
-  { key: "terminal", label: "终端", workspace: "toolbox" },
-  { key: "tools", label: "维护", workspace: "toolbox" },
-  { key: "output", label: "最近输出", workspace: "toolbox" },
-];
+) as Record<WorkspaceKey, Component>;
 
 const workspaces: readonly WorkspaceDefinition[] = [
-  {
-    key: "run",
-    label: "运行",
-    icon: Gauge,
-  },
-  {
-    key: "route",
-    label: "路由",
-    icon: GitBranch,
-  },
-  {
-    key: "configure",
-    label: "配置",
-    icon: Settings,
-  },
-  {
-    key: "toolbox",
-    label: "工具",
-    icon: Wrench,
-  },
+  { key: "dashboard", label: "仪表盘", icon: LayoutDashboard },
+  { key: "nodes", label: "节点", icon: Router },
+  { key: "subs", label: "订阅", icon: CloudDownload },
+  { key: "settings", label: "设置", icon: Settings },
 ];
+
+/** Legacy tab keys (deep links + cross-page navigation) map onto the new model. */
+const TAB_TARGETS: Record<string, { workspace: WorkspaceKey; settings?: SettingsRoute }> = {
+  control: { workspace: "dashboard" },
+  about: { workspace: "dashboard" },
+  subs: { workspace: "subs" },
+  proxy: { workspace: "nodes" },
+  chain: { workspace: "nodes" },
+  apps: { workspace: "settings", settings: "apps" },
+  dns: { workspace: "settings", settings: "proxy" },
+  stack: { workspace: "settings", settings: "proxy" },
+  domain: { workspace: "settings", settings: "proxy" },
+  block: { workspace: "settings", settings: "proxy" },
+  config: { workspace: "settings", settings: "kernel" },
+  webui: { workspace: "settings", settings: "kernel" },
+  warp: { workspace: "settings", settings: "outbound" },
+  tailscale: { workspace: "settings", settings: "outbound" },
+  tools: { workspace: "settings", settings: "maint" },
+  health: { workspace: "settings", settings: "maint" },
+  terminal: { workspace: "settings", settings: "maint" },
+  output: { workspace: "settings", settings: "logs" },
+};
 
 const {
   state,
@@ -148,27 +113,91 @@ const {
 const { preference: themePreference, label: themeLabel, cycleTheme } = useTheme();
 const { keyboardOpen } = useMobileKeyboard();
 
-function readTabFromLocation(): TabKey | null {
+type Location = { workspace: WorkspaceKey; settings: SettingsRoute | null };
+
+function readLocation(): Location | null {
   if (typeof window === "undefined") return null;
-  const key = window.location.hash.replace(/^#\/?/, "");
-  return tabs.some((item) => item.key === key) ? key as TabKey : null;
+  const raw = window.location.hash.replace(/^#\/?/, "");
+  if (!raw) return null;
+  const [head, sub] = raw.split("/");
+  if (workspaces.some((item) => item.key === head)) {
+    if (head === "settings") {
+      const route = SETTINGS_ROUTES.includes(sub as SettingsRoute) ? (sub as SettingsRoute) : null;
+      return { workspace: "settings", settings: route };
+    }
+    return { workspace: head as WorkspaceKey, settings: null };
+  }
+  const target = TAB_TARGETS[head];
+  if (target) return { workspace: target.workspace, settings: target.settings ?? null };
+  return null;
 }
 
-function writeTabToLocation(tab: TabKey, replace = false): void {
+const initialLocation = readLocation();
+const activeWorkspaceKey = ref<WorkspaceKey>(initialLocation?.workspace ?? "dashboard");
+const settingsRoute = ref<SettingsRoute | null>(
+  initialLocation?.workspace === "settings" ? initialLocation.settings : null,
+);
+
+function locationHash(): string {
+  if (activeWorkspaceKey.value === "settings" && settingsRoute.value) {
+    return `#/settings/${settingsRoute.value}`;
+  }
+  return `#/${activeWorkspaceKey.value}`;
+}
+
+function writeLocation(replace = false): void {
   if (typeof window === "undefined") return;
-  const hash = `#/${tab}`;
+  const hash = locationHash();
   if (window.location.hash === hash) return;
-  const method = replace ? "replaceState" : "pushState";
-  window.history[method]({ tab }, "", hash);
+  window.history[replace ? "replaceState" : "pushState"]({}, "", hash);
 }
 
-const activeTab = ref<TabKey>(readTabFromLocation() ?? "control");
-const lastTabByWorkspace = ref<Record<WorkspaceKey, TabKey>>({
-  run: "control",
-  route: "apps",
-  configure: "subs",
-  toolbox: "health",
-});
+function warmWorkspace(workspace: WorkspaceKey): void {
+  if (workspace === "dashboard") void refreshStatus();
+  else if (workspace === "subs") void refreshSubs(true);
+  // Settings detail pages refresh themselves from inside SettingsHubPage.
+}
+
+function selectWorkspace(workspace: WorkspaceKey): void {
+  const changed = workspace !== activeWorkspaceKey.value;
+  activeWorkspaceKey.value = workspace;
+  // Tapping the settings tab always returns to its hub.
+  settingsRoute.value = null;
+  if (changed) warmWorkspace(workspace);
+  void workspaceLoaders[workspace]();
+  writeLocation();
+}
+
+function openSettings(route: SettingsRoute): void {
+  activeWorkspaceKey.value = "settings";
+  settingsRoute.value = route;
+  writeLocation();
+}
+
+function closeSettings(): void {
+  settingsRoute.value = null;
+  writeLocation();
+}
+
+function gotoTab(key: string): void {
+  const target = TAB_TARGETS[key];
+  if (!target) return;
+  activeWorkspaceKey.value = target.workspace;
+  settingsRoute.value = target.workspace === "settings" ? (target.settings ?? null) : null;
+  warmWorkspace(target.workspace);
+  void workspaceLoaders[target.workspace]();
+  writeLocation();
+}
+
+function syncFromLocation(): void {
+  const loc = readLocation();
+  if (!loc) return;
+  activeWorkspaceKey.value = loc.workspace;
+  settingsRoute.value = loc.workspace === "settings" ? loc.settings : null;
+  warmWorkspace(loc.workspace);
+  void workspaceLoaders[loc.workspace]();
+}
+
 const showUtilityMenu = ref(false);
 const showOnboarding = ref(false);
 const utilityDialog = ref<HTMLElement | null>(null);
@@ -214,16 +243,13 @@ let brandClickWindowStartedAt = 0;
 let easterEggTimer: number | undefined;
 let bodyOverflowBeforeDialog = "";
 
-const activeTabDefinition = computed(
-  () => tabs.find((item) => item.key === activeTab.value) ?? tabs[0],
-);
 const activeWorkspace = computed(
-  () => workspaces.find((item) => item.key === activeTabDefinition.value.workspace) ?? workspaces[0],
+  () => workspaces.find((item) => item.key === activeWorkspaceKey.value) ?? workspaces[0],
 );
-const activeSectionTabs = computed(() =>
-  tabs.filter((item) => item.workspace === activeWorkspace.value.key),
+const activeComponent = computed(() => asyncPages[activeWorkspaceKey.value]);
+const activeComponentProps = computed(() =>
+  activeWorkspaceKey.value === "settings" ? { route: settingsRoute.value } : {},
 );
-const activeComponent = computed(() => asyncPages[activeTab.value]);
 
 const statusMessage = computed(() => (state.task ? t("正在执行：{task}", { task: t(state.task) }) : t(state.notice)));
 const runtimeStateLabel = computed(() => {
@@ -246,31 +272,6 @@ const statusDotTone = computed(() => {
   if (state.runtime.singBoxState === "stopped") return "stop" as const;
   return "unknown" as const;
 });
-
-function setTab(tab: TabKey, options: { updateLocation?: boolean } = {}): void {
-  if (tab !== activeTab.value) {
-    activeTab.value = tab;
-    const definition = tabs.find((item) => item.key === tab);
-    if (definition) lastTabByWorkspace.value[definition.workspace] = tab;
-    warmActiveTab(tab);
-  }
-  if (options.updateLocation !== false) writeTabToLocation(tab);
-  void nextTick(() => {
-    const target = Array.from(
-      document.querySelectorAll<HTMLElement>(`[data-tab="${tab}"]`),
-    ).find((item) => item.offsetParent !== null);
-    target?.scrollIntoView({ block: "nearest", inline: "center" });
-  });
-}
-
-function setWorkspace(workspace: WorkspaceKey): void {
-  setTab(workspace === "configure" ? "subs" : lastTabByWorkspace.value[workspace]);
-}
-
-function syncTabFromLocation(): void {
-  const tab = readTabFromLocation();
-  if (tab) setTab(tab, { updateLocation: false });
-}
 
 function readOnboardingPreference(): OnboardingPreference | null {
   if (typeof window === "undefined") return null;
@@ -324,7 +325,7 @@ function closeOnboarding(preference: OnboardingPreference = "dismissed"): void {
 function handleOnboardingSubmit(value: string): void {
   setPendingSubscriptionDraft(value);
   closeOnboarding("completed");
-  setTab("subs");
+  gotoTab("subs");
 }
 
 async function requestIssue(): Promise<void> {
@@ -406,44 +407,28 @@ function handleEscape(event: KeyboardEvent): void {
   closeEasterEgg();
 }
 
-function prefetchTab(tab: TabKey): void {
-  void pageLoaders[tab]();
-}
-
-function warmActiveTab(tab: TabKey): void {
-  if (tab === "apps") void refreshApps(true);
-  if (tab === "block") void refreshBlock(true);
-  if (tab === "subs") void refreshSubs(true);
-  if (tab === "health") {
-    void refreshMcp(true);
-    void refreshHealth(true);
-  }
-  if (tab === "tools") {
-    void refreshMcp(true);
-  }
-  if (tab === "dns") void refreshDns(true);
-  if (tab === "domain") void refreshDomainForward(true);
-  if (tab === "warp") void refreshWarp(true);
-  if (tab === "stack") void refreshNetwork(true);
+function prefetchWorkspace(workspace: WorkspaceKey): void {
+  void workspaceLoaders[workspace]();
 }
 
 onMounted(() => {
   void refreshStatus();
+  warmWorkspace(activeWorkspaceKey.value);
   document.addEventListener("keydown", handleEscape);
   document.addEventListener("pointerdown", dismissActionMenus);
-  window.addEventListener("popstate", syncTabFromLocation);
-  window.addEventListener("hashchange", syncTabFromLocation);
-  writeTabToLocation(activeTab.value, true);
-  void pageLoaders[activeTab.value]();
+  window.addEventListener("popstate", syncFromLocation);
+  window.addEventListener("hashchange", syncFromLocation);
+  writeLocation(true);
+  void workspaceLoaders[activeWorkspaceKey.value]();
   if (state.hasKsu && !readOnboardingPreference()) {
     void nextTick(() => {
       if (!showOnboarding.value) launchOnboarding();
     });
   }
   const warm = () => {
-    void pageLoaders.config();
-    void pageLoaders.apps();
-    void pageLoaders.health();
+    void workspaceLoaders.nodes();
+    void workspaceLoaders.subs();
+    void workspaceLoaders.settings();
   };
   if (typeof requestIdleCallback === "function") requestIdleCallback(warm, { timeout: 2500 });
   else window.setTimeout(warm, 800);
@@ -452,8 +437,8 @@ onMounted(() => {
 onUnmounted(() => {
   document.removeEventListener("keydown", handleEscape);
   document.removeEventListener("pointerdown", dismissActionMenus);
-  window.removeEventListener("popstate", syncTabFromLocation);
-  window.removeEventListener("hashchange", syncTabFromLocation);
+  window.removeEventListener("popstate", syncFromLocation);
+  window.removeEventListener("hashchange", syncFromLocation);
   if (easterEggTimer !== undefined) window.clearTimeout(easterEggTimer);
   if (showUtilityMenu.value) document.body.style.overflow = bodyOverflowBeforeDialog;
 });
@@ -549,7 +534,7 @@ onUnmounted(() => {
     </header>
 
     <section
-      v-if="state.hasKsu && (activeTab !== 'control' || state.task || state.backgroundTask.status === 'running')"
+      v-if="state.hasKsu && (activeWorkspaceKey !== 'dashboard' || state.task || state.backgroundTask.status === 'running')"
       class="mn-runtime-brief"
       :data-state="routeStackState"
       role="status"
@@ -567,7 +552,7 @@ onUnmounted(() => {
         v-if="state.backgroundTask.log"
         variant="ghost"
         size="sm"
-        @click="setTab('output')"
+        @click="gotoTab('output')"
       >
         {{ t('查看输出') }}
       </Button>
@@ -576,55 +561,34 @@ onUnmounted(() => {
     <div class="mn-workspace-frame">
       <aside class="desktop-rail" :aria-label="t('MagicNet 工作区')">
         <nav :aria-label="t('全部页面')">
-          <div v-for="workspace in workspaces" :key="workspace.key" class="mn-nav-group">
-            <div class="mn-rail-label">
-              <component :is="workspace.icon" :size="15" aria-hidden="true" />
-              <span>{{ t(workspace.label) }}</span>
-            </div>
-            <button
-              v-for="item in tabs.filter((tab) => tab.workspace === workspace.key)"
-              :key="item.key"
-              :data-tab="item.key"
-              :class="activeTab === item.key ? 'mn-nav-active' : 'mn-nav-idle'"
-              type="button"
-              :aria-current="activeTab === item.key ? 'page' : undefined"
-              @pointerenter="prefetchTab(item.key)"
-              @focus="prefetchTab(item.key)"
-              @click="setTab(item.key)"
-            >
-              <span>{{ t(item.label) }}</span>
-            </button>
-          </div>
+          <button
+            v-for="workspace in workspaces"
+            :key="workspace.key"
+            :class="activeWorkspaceKey === workspace.key ? 'mn-nav-active' : 'mn-nav-idle'"
+            type="button"
+            :aria-current="activeWorkspaceKey === workspace.key ? 'page' : undefined"
+            @pointerenter="prefetchWorkspace(workspace.key)"
+            @focus="prefetchWorkspace(workspace.key)"
+            @click="selectWorkspace(workspace.key)"
+          >
+            <component :is="workspace.icon" :size="16" aria-hidden="true" />
+            <span>{{ t(workspace.label) }}</span>
+          </button>
         </nav>
       </aside>
 
       <main class="mn-workspace-main">
-        <header class="mn-workspace-header">
-          <nav class="mn-section-tabs" :aria-label="t('{workspace}分区', { workspace: t(activeWorkspace.label) })">
-            <button
-              v-for="item in activeSectionTabs"
-              :key="item.key"
-              :data-tab="item.key"
-              :class="activeTab === item.key ? 'is-active' : undefined"
-              type="button"
-              :aria-current="activeTab === item.key ? 'page' : undefined"
-              @pointerenter="prefetchTab(item.key)"
-              @focus="prefetchTab(item.key)"
-              @click="setTab(item.key)"
-            >
-              <span>{{ t(item.label) }}</span>
-            </button>
-          </nav>
-        </header>
-
-        <!-- KeepAlive preserves form state across all five workspaces. -->
-        <section class="page-surface" :data-page="activeTab">
+        <!-- KeepAlive preserves form state across the four workspaces. -->
+        <section class="page-surface" :data-page="activeWorkspaceKey">
           <Suspense>
-            <KeepAlive :max="12">
+            <KeepAlive :max="8">
               <component
                 :is="activeComponent"
-                @goto-output="setTab('output')"
-                @goto-tab="setTab"
+                v-bind="activeComponentProps"
+                @goto-output="gotoTab('output')"
+                @goto-tab="gotoTab"
+                @open="openSettings"
+                @back="closeSettings"
               />
             </KeepAlive>
             <template #fallback>
@@ -640,10 +604,10 @@ onUnmounted(() => {
         v-for="workspace in workspaces"
         :key="workspace.key"
         :data-workspace="workspace.key"
-        :class="activeWorkspace.key === workspace.key ? 'mn-nav-active' : 'mn-nav-idle'"
+        :class="activeWorkspaceKey === workspace.key ? 'mn-nav-active' : 'mn-nav-idle'"
         type="button"
-        :aria-current="activeWorkspace.key === workspace.key ? 'page' : undefined"
-        @click="setWorkspace(workspace.key)"
+        :aria-current="activeWorkspaceKey === workspace.key ? 'page' : undefined"
+        @click="selectWorkspace(workspace.key)"
       >
         <component :is="workspace.icon" :size="19" aria-hidden="true" />
         <span>{{ t(workspace.label) }}</span>

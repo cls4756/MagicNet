@@ -177,7 +177,11 @@ magicnet_ip6tables_nat_ensure() {
 }
 
 magicnet_dns_capture_enabled() {
-    [ "${MAGIC_DNS_CAPTURE:-1}" = "1" ]
+    if command -v magicnet_dns_interception >/dev/null 2>&1; then
+        [ "$(magicnet_dns_interception)" = on ]
+    else
+        [ "${MAGIC_DNS_CAPTURE:-1}" = 1 ]
+    fi
 }
 
 magicnet_dns_capture_port() {

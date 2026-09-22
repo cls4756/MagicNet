@@ -140,12 +140,14 @@ export const CLI_COMMAND_TREE: readonly CommandDoc[] = [
       { name: "status", description: "查看当前网络栈配置与策略" },
       {
         name: "set",
-        syntax: "<ipv4_only|prefer_ipv4|prefer_ipv6> <mtu> <timeout>",
+        syntax: "<ipv4_only|prefer_ipv4|prefer_ipv6> <mtu> <timeout> [on|off]",
         description: "设置网络协议优先级与参数",
         children: [
           { name: "prefer_ipv4", description: "优先 IPv4，备选 IPv6" },
           { name: "ipv4_only", description: "仅使用 IPv4" },
           { name: "prefer_ipv6", description: "优先 IPv6" },
+          { name: "on", description: "开启 DNS 劫持" },
+          { name: "off", description: "关闭 DNS 劫持，使用系统 DNS" },
         ],
       },
       { name: "apply", description: "应用网络策略变更" },

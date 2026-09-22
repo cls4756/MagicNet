@@ -15,6 +15,7 @@ const NETWORK_POLICY_CONF: &str = ".config/magicnet/network-policy.conf";
 const DEFAULT_IPV6_MODE: &str = "prefer_ipv4";
 const DEFAULT_MTU: u16 = 1400;
 const DEFAULT_UDP_TIMEOUT: &str = "5m";
+const DEFAULT_DNS_INTERCEPTION: &str = "on";
 const DNS_CONF: &str = ".config/magicnet/dns.conf";
 const NETWORK_EVENT_DEBOUNCE: Duration = Duration::from_millis(750);
 const NETWORK_DNS_CONFIRMATION_DELAY: Duration = Duration::from_millis(500);
@@ -150,6 +151,7 @@ struct NetworkPolicy {
     ipv6_mode: &'static str,
     mtu: u16,
     udp_timeout: &'static str,
+    dns_interception: &'static str,
 }
 
 impl Default for NetworkPolicy {
@@ -158,6 +160,7 @@ impl Default for NetworkPolicy {
             ipv6_mode: DEFAULT_IPV6_MODE,
             mtu: DEFAULT_MTU,
             udp_timeout: DEFAULT_UDP_TIMEOUT,
+            dns_interception: DEFAULT_DNS_INTERCEPTION,
         }
     }
 }
@@ -169,9 +172,20 @@ pub(crate) fn network_cmd(app: &App, args: &[String]) -> Result<(), String> {
             Ok(())
         }
         "set" => {
-            let policy = NetworkPolicy::from_args(&args[1..])?;
+            let current = NetworkPolicy::load(app);
+            let policy = NetworkPolicy::from_args(&args[1..], current.dns_interception)?;
             policy.write(app)?;
-            apply_network_policy(app)?;
+            if let Err(error) = apply_network_policy(app) {
+                let rollback = current
+                    .write(app)
+                    .and_then(|_| apply_network_policy(app));
+                if let Err(rollback_error) = rollback {
+                    return Err(format!(
+                        "network policy apply failed: {error}; rollback failed: {rollback_error}"
+                    ));
+                }
+                return Err(error);
+            }
             print_status(app, &policy);
             println!("[info] Network policy applied");
             Ok(())
@@ -336,17 +350,29 @@ impl NetworkPolicy {
                     .unwrap_or_default(),
             )
             .unwrap_or(DEFAULT_UDP_TIMEOUT),
+            dns_interception: normalize_dns_interception(
+                values
+                    .get("MAGICNET_DNS_INTERCEPTION")
+                    .map(String::as_str)
+                    .unwrap_or_default(),
+            )
+            .unwrap_or(DEFAULT_DNS_INTERCEPTION),
         }
     }
 
-    fn from_args(args: &[String]) -> Result<Self, String> {
-        if args.len() != 3 {
+    fn from_args(args: &[String], current_dns_interception: &'static str) -> Result<Self, String> {
+        if !(args.len() == 3 || args.len() == 4) {
             return Err(network_usage());
         }
         Ok(Self {
             ipv6_mode: normalize_ipv6_mode(&args[0]).ok_or_else(network_usage)?,
             mtu: normalize_mtu(&args[1]).ok_or_else(network_usage)?,
             udp_timeout: normalize_udp_timeout(&args[2]).ok_or_else(network_usage)?,
+            dns_interception: if args.len() == 4 {
+                normalize_dns_interception(&args[3]).ok_or_else(network_usage)?
+            } else {
+                current_dns_interception
+            },
         })
     }
 
@@ -358,8 +384,17 @@ impl NetworkPolicy {
                 ("MAGICNET_IPV6_MODE", self.ipv6_mode.to_string()),
                 ("MAGICNET_TUN_MTU", self.mtu.to_string()),
                 ("MAGICNET_UDP_TIMEOUT", self.udp_timeout.to_string()),
+                ("MAGICNET_DNS_INTERCEPTION", self.dns_interception.to_string()),
             ],
         )
+    }
+}
+
+fn normalize_dns_interception(value: &str) -> Option<&'static str> {
+    match value {
+        "on" | "enabled" | "1" | "true" => Some("on"),
+        "off" | "disabled" | "0" | "false" => Some("off"),
+        _ => None,
     }
 }
 
@@ -395,6 +430,7 @@ fn print_status(app: &App, policy: &NetworkPolicy) {
     println!("ipv6_mode={}", policy.ipv6_mode);
     println!("mtu={}", policy.mtu);
     println!("udp_timeout={}", policy.udp_timeout);
+    println!("dns_interception={}", policy.dns_interception);
 
     let effective = fs::read_to_string(app.moddir.join(".config/sing-box/config.json"))
         .ok()
@@ -437,7 +473,7 @@ fn print_status(app: &App, policy: &NetworkPolicy) {
 }
 
 fn network_usage() -> String {
-    "Usage: cli network {status|set <ipv4_only|prefer_ipv4|prefer_ipv6> <mtu:1280-1500> <udp-timeout:1m|3m|5m|10m|15m|30m>|apply|watch}".to_string()
+    "Usage: cli network {status|set <ipv4_only|prefer_ipv4|prefer_ipv6> <mtu:1280-1500> <udp-timeout:1m|3m|5m|10m|15m|30m> [dns-interception:on|off]|apply|watch}".to_string()
 }
 
 #[cfg(test)]
@@ -467,5 +503,13 @@ mod tests {
         assert_eq!(normalize_udp_timeout("30m"), Some("30m"));
         assert_eq!(normalize_udp_timeout("0m"), None);
         assert_eq!(normalize_udp_timeout("1h"), None);
+    }
+
+    #[test]
+    fn dns_interception_defaults_on_and_accepts_only_bounded_tokens() {
+        assert_eq!(normalize_dns_interception("on"), Some("on"));
+        assert_eq!(normalize_dns_interception("0"), Some("off"));
+        assert_eq!(normalize_dns_interception("disabled"), Some("off"));
+        assert_eq!(normalize_dns_interception("maybe"), None);
     }
 }
