@@ -877,6 +877,11 @@ onMounted(() => {
   content: "";
 }
 
+.mn-control-settings {
+  display: grid;
+  gap: 16px;
+}
+
 .mn-control-notice {
   margin-top: 20px;
   border-radius: var(--mn-radius-md);
