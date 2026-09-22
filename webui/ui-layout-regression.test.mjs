@@ -6,7 +6,7 @@ const apps = readFileSync(new URL("./src/components/pages/AppsPage.vue", import.
 const styles = readFileSync(new URL("./src/styles.css", import.meta.url), "utf8");
 const button = readFileSync(new URL("./src/components/ui/Button.vue", import.meta.url), "utf8");
 
-assert.match(app, /type WorkspaceKey = "run" \| "route" \| "configure" \| "toolbox"/);
+assert.match(app, /type WorkspaceKey = "dashboard" \| "nodes" \| "subs" \| "settings"/);
 assert.match(styles, /\.mobile-nav\s*\{[\s\S]*grid-template-columns:\s*repeat\(4,/);
 assert.match(styles, /\.mobile-nav button span\s*\{[\s\S]*overflow-wrap:\s*anywhere[\s\S]*white-space:\s*normal/);
 assert.match(styles, /\.mn-section-tabs\s*\{[\s\S]*overflow-x:\s*auto/);
@@ -22,7 +22,7 @@ assert.doesNotMatch(
   /<PageHeader/,
   "the section tabs already name this page, so it must not repeat a page header",
 );
-assert.match(styles, /\.magic-card\.mn-section-lead\s*\{\s*border-top:\s*0;/);
+assert.match(styles, /\.magic-card\.mn-section-lead\s*\{\s*border-top:\s*1px solid var\(--mn-border\);/);
 assert.equal(apps.match(/<ScrollBox /g)?.length, 2, "both app lists need the visible scroll rail");
 assert.equal(apps.match(/<\/ScrollBox>/g)?.length, 2, "every ScrollBox must be closed again");
 assert.match(styles, /\.mn-scroll-box__thumb\s*\{[\s\S]*?background-color:/);

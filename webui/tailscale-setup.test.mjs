@@ -172,7 +172,11 @@ test("page uses the private transport and clears credentials when leaving KeepAl
   assert.doesNotMatch(source, /localStorage|sessionStorage|console\.(?:log|error)|v-html|JSON\.parse/);
   assert.match(source, /state\.config\.dirty/);
   const app = readFileSync(new URL("./src/App.vue", import.meta.url), "utf8");
-  assert.match(app, /tailscale: \(\) => import\("@\/components\/pages\/TailscalePage.vue"\)/);
+  const settings = readFileSync(new URL("./src/components/pages/SettingsHubPage.vue", import.meta.url), "utf8");
+  const outbound = readFileSync(new URL("./src/components/pages/settings/OutboundPage.vue", import.meta.url), "utf8");
+  assert.match(app, /tailscale: \{ workspace: "settings", settings: "outbound" \}/);
+  assert.match(settings, /outbound: defineAsyncComponent\(\(\) => import\("\.\/settings\/OutboundPage\.vue"\)\)/);
+  assert.match(outbound, /import TailscalePage from "\.\.\/TailscalePage\.vue"/);
 });
 
 
