@@ -15,7 +15,7 @@ import {
   Sun,
   X,
 } from "lucide-vue-next";
-import { computed, defineAsyncComponent, nextTick, onMounted, onUnmounted, ref, type Component } from "vue";
+import { computed, defineAsyncComponent, nextTick, onMounted, onUnmounted, ref, watch, type Component } from "vue";
 import { t } from "@/i18n";
 import { SETTINGS_ROUTES, type SettingsRoute } from "@/components/pages/settingsRoutes";
 import LanguageSelect from "@/components/LanguageSelect.vue";
@@ -250,27 +250,30 @@ const activeComponentProps = computed(() =>
   activeWorkspaceKey.value === "settings" ? { route: settingsRoute.value } : {},
 );
 
-const statusMessage = computed(() => (state.task ? t("正在执行：{task}", { task: t(state.task) }) : t(state.notice)));
-const runtimeStateLabel = computed(() => {
-  if (state.runtime.singBoxState === "sing-box") return t("sing-box 运行中");
-  if (state.runtime.singBoxState === "stopped") return t("已停止");
-  return t("状态未知");
-});
-const routeStackState = computed(() => {
-  if (state.runtime.singBoxState === "sing-box") return "active";
-  if (state.runtime.singBoxState === "stopped") return "stopped";
-  return "unknown";
-});
-const transparentRouteData = computed(() => {
-  if (state.runtime.transparentMode === "tun") return "magicnet0";
-  if (state.runtime.transparentMode === "ebpf") return state.runtime.transparentEffectiveMode;
-  return "unknown";
-});
-const statusDotTone = computed(() => {
-  if (state.runtime.singBoxState === "sing-box") return "ok" as const;
-  if (state.runtime.singBoxState === "stopped") return "stop" as const;
-  return "unknown" as const;
-});
+const operationPanelVisible = ref(false);
+let operationPanelTimer: number | undefined;
+const operationPanelActive = computed(() => ["accepted", "queued", "running"].includes(state.operationCapture.phase));
+
+watch(
+  () => [state.operationCapture.sequence, state.operationCapture.phase] as const,
+  ([, phase]) => {
+    if (operationPanelTimer !== undefined) {
+      window.clearTimeout(operationPanelTimer);
+      operationPanelTimer = undefined;
+    }
+    if (phase === "accepted" || phase === "queued" || phase === "running") {
+      operationPanelVisible.value = true;
+      return;
+    }
+    if (phase === "done" || phase === "error") {
+      operationPanelVisible.value = true;
+      operationPanelTimer = window.setTimeout(() => {
+        operationPanelVisible.value = false;
+        operationPanelTimer = undefined;
+      }, 1400);
+    }
+  },
+);
 
 function readOnboardingPreference(): OnboardingPreference | null {
   if (typeof window === "undefined") return null;
@@ -360,6 +363,7 @@ function trapUtilityMenuFocus(event: KeyboardEvent): void {
 function closeEasterEgg(): void {
   easterEggVisible.value = false;
   if (easterEggTimer !== undefined) window.clearTimeout(easterEggTimer);
+  if (operationPanelTimer !== undefined) window.clearTimeout(operationPanelTimer);
   easterEggTimer = undefined;
 }
 
@@ -532,30 +536,18 @@ onUnmounted(() => {
       </div>
     </header>
 
-    <section
-      v-if="state.hasKsu && (activeWorkspaceKey !== 'dashboard' || state.task || state.backgroundTask.status === 'running')"
-      class="mn-runtime-brief"
-      :data-state="routeStackState"
-      role="status"
-      aria-live="polite"
-      aria-atomic="true"
-      :aria-label="t('MagicNet 运行状态')"
-    >
-      <div class="mn-runtime-state">
-        <StatusDot :tone="statusDotTone" />
-        <strong>{{ runtimeStateLabel }}</strong>
-      </div>
-      <span class="mn-runtime-mode" :title="t('数据面：{mode}', { mode: transparentRouteData })">{{ state.runtime.transparentMode === 'unknown' ? t('模式未知') : state.runtime.transparentMode === 'ebpf' ? 'eBPF' : 'TUN' }}</span>
-      <p v-if="statusMessage">{{ statusMessage }}</p>
-      <Button
-        v-if="state.backgroundTask.log"
-        variant="ghost"
-        size="sm"
-        @click="gotoTab('output')"
-      >
-        {{ t('查看输出') }}
-      </Button>
-    </section>
+    <Transition name="operation-panel">
+      <section v-if="operationPanelVisible" class="mn-operation-glass" :data-phase="state.operationCapture.phase" role="status" aria-live="polite" aria-atomic="true">
+        <div class="mn-operation-heading">
+          <StatusDot :tone="operationPanelActive ? 'current' : state.operationCapture.phase === 'error' ? 'stop' : 'ok'" />
+          <strong>{{ operationPanelActive ? t('正在执行') : state.operationCapture.phase === 'error' ? t('操作失败') : t('操作完成') }}</strong>
+          <span v-if="state.task" class="mn-operation-task">{{ t(state.task) }}</span>
+        </div>
+        <code class="mn-operation-command">$ {{ state.operationCapture.command }}</code>
+        <pre class="mn-operation-output">{{ state.operationCapture.output }}</pre>
+        <Button v-if="state.backgroundTask.log" variant="ghost" size="sm" @click="gotoTab('output')">{{ t('查看输出') }}</Button>
+      </section>
+    </Transition>
 
     <div class="mn-workspace-frame">
       <aside class="desktop-rail" :aria-label="t('MagicNet 工作区')">

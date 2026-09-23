@@ -7,9 +7,9 @@ import ProxyGroupsPanel from "./ProxyGroupsPanel.vue";
 <template>
   <div class="proxy-page">
     <PageHeader
-      :overline="t('运行选择')"
+      :overline="t('运行策略')"
       :title="t('代理')"
-      :description="t('订阅负责提供来源，代理页面负责查看实际节点、策略组并切换当前节点。')"
+      :description="t('订阅负责提供来源，代理页面按策略组展示实际节点并切换当前节点。')"
     />
     <ProxyGroupsPanel />
   </div>

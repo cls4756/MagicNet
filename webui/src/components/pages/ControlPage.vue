@@ -2,7 +2,11 @@
 import { t } from "@/i18n";
 import {
   DownloadCloud,
+  Cpu,
   ExternalLink,
+  HelpCircle,
+  MemoryStick,
+  Pencil,
   Plus,
   Power,
   Radar,
@@ -17,7 +21,6 @@ import Card from "@/components/ui/Card.vue";
 import CardHeading from "@/components/ui/CardHeading.vue";
 import ConfirmPanel from "@/components/ui/ConfirmPanel.vue";
 import Input from "@/components/ui/Input.vue";
-import RemovableTag from "@/components/ui/RemovableTag.vue";
 import StatTile from "@/components/ui/StatTile.vue";
 import StatusDot from "@/components/ui/StatusDot.vue";
 import {
@@ -64,7 +67,10 @@ const pendingDangerAction = ref<ControlDangerAction | null>(null);
 const dangerConfirmCard = ref<HTMLElement | null>(null);
 const wifiSsidInput = ref("");
 const wifiBssidInput = ref("");
+const editingWifiEntry = ref<{ kind: "ssid" | "bssid"; value: string } | null>(null);
+const editingWifiValue = ref("");
 const hotspotProxyEnabled = ref(false);
+const showHotspotHelp = ref(false);
 const hotspotRouteStatus = ref("");
 const hotspotForwardingLabel = computed(() => {
   switch (hotspotRouteStatus.value) {
@@ -181,7 +187,10 @@ const sharedInterfacesLabel = computed(() =>
       : String(state.runtime.transparentSharedInterfaceCount)),
 );
 
-const wifiPolicyModes = ["blacklist", "whitelist"] as const;
+const wifiPolicyModes = [
+  { value: "blacklist", label: "指定网络直连" },
+  { value: "whitelist", label: "指定网络代理" },
+] as const;
 
 async function toggleSingBox(event: MouseEvent): Promise<void> {
   const running = state.runtime.singBoxState === "sing-box";
@@ -302,12 +311,14 @@ async function runWifiAction(
 }
 
 async function toggleWifiPolicy(): Promise<void> {
-  const enable = !state.wifiPolicy.enabled;
-  await runWifiAction(
-    "wifi-toggle",
-    `wifi ${enable ? "enable" : "disable"}`,
-    enable ? t("启用 Wi-Fi 自动模式") : t("停用 Wi-Fi 自动模式"),
-  );
+  await runWifiAction("wifi-toggle", `wifi ${!state.wifiPolicy.enabled ? "enable" : "disable"}`,
+    !state.wifiPolicy.enabled ? t("启用 Wi-Fi 自动模式") : t("停用 Wi-Fi 自动模式"));
+}
+
+async function toggleWifiPolicyFromSwitch(event: Event): Promise<void> {
+  const checkbox = event.currentTarget as HTMLInputElement;
+  if (checkbox.checked === state.wifiPolicy.enabled) return;
+  await toggleWifiPolicy();
 }
 
 async function refreshHotspotPolicy(): Promise<boolean> {
@@ -400,6 +411,58 @@ async function removeWifiEntry(
   );
 }
 
+function beginEditWifiEntry(kind: "ssid" | "bssid", value: string): void {
+  editingWifiEntry.value = { kind, value };
+  editingWifiValue.value = value;
+}
+
+async function saveWifiEntryEdit(): Promise<void> {
+  const entry = editingWifiEntry.value;
+  const value = editingWifiValue.value.trim();
+  if (!entry || !value || value === entry.value) {
+    editingWifiEntry.value = null;
+    return;
+  }
+  if ((entry.kind === "ssid" ? state.wifiPolicy.ssids : state.wifiPolicy.bssids).includes(value)) {
+    state.output = t("该规则已存在。");
+    return;
+  }
+  await withAction(`wifi-edit-${entry.kind}`, async () => {
+    const removed = await runCli(`wifi remove-${entry.kind} ${shellQuote(entry.value)}`, t("更新 Wi-Fi 规则"));
+    if (execFailed(removed)) return;
+    const added = await runCli(`wifi add-${entry.kind} ${shellQuote(value)}`, t("更新 Wi-Fi 规则"));
+    if (execFailed(added)) {
+      await runCli(`wifi add-${entry.kind} ${shellQuote(entry.value)}`, t("恢复 Wi-Fi 规则"));
+      await refreshWifiPolicy(true);
+      return;
+    }
+    editingWifiEntry.value = null;
+    await refreshWifiPolicy(true);
+  });
+}
+
+async function addCurrentWifi(): Promise<void> {
+  const { ssid, bssid } = state.wifiPolicy;
+  if (!state.wifiPolicy.connected || (!ssid && !bssid)) {
+    state.output = t("当前没有可添加的 Wi-Fi 信息。");
+    return;
+  }
+  await withAction("wifi-add-current", async () => {
+    if (ssid && !state.wifiPolicy.ssids.includes(ssid)) {
+      const result = await runCli(`wifi add-ssid ${shellQuote(ssid)}`, t("添加当前 Wi-Fi"));
+      if (execFailed(result)) return;
+    }
+    if (bssid && !state.wifiPolicy.bssids.includes(bssid)) {
+      const result = await runCli(`wifi add-bssid ${shellQuote(bssid)}`, t("添加当前 Wi-Fi"));
+      if (execFailed(result)) {
+        await refreshWifiPolicy(true);
+        return;
+      }
+    }
+    await refreshWifiPolicy(true);
+  });
+}
+
 onMounted(() => {
   void refreshHotspotPolicy();
 });
@@ -408,34 +471,37 @@ onMounted(() => {
 <template>
   <div class="mn-control">
     <section class="mn-control-hero" :aria-label="t('服务概览')">
-      <div class="mn-control-status" role="status" aria-live="polite">
-        <div class="mn-control-state-heading">
-          <h2>{{ controlTitle }}</h2>
-          <p class="mn-control-subtitle">
-            <span v-if="state.hasKsu" :class="['mn-control-dot', singBoxStatus.dotClass]" aria-hidden="true" />
-            <span>{{ state.hasKsu ? `sing-box · ${transparentModeLabel}` : t("请在模块管理器中打开") }}</span>
-          </p>
-        </div>
-        <dl v-if="state.hasKsu && state.runtime.singBoxState === 'sing-box'" class="mn-control-memory">
-          <dt>{{ t("内核内存（RSS）") }}</dt>
-          <dd :data-unavailable="state.runtime.singBoxRssKib == null">
-            <template v-if="state.runtime.singBoxRssKib != null">
-              {{ (state.runtime.singBoxRssKib / 1024).toFixed(1) }} <span>MiB</span>
+      <div class="mn-control-metrics" aria-live="polite">
+        <article class="mn-control-metric mn-control-service">
+          <div class="mn-control-metric-heading"><Power :size="18" /><span>{{ t("服务状态") }}</span></div>
+          <div class="mn-control-service-row">
+            <div class="mn-control-service-value">
+              <span v-if="state.hasKsu" :class="['mn-control-dot', singBoxStatus.dotClass]" aria-hidden="true" />
+              <strong>{{ controlTitle }}</strong>
+              <span class="mn-control-muted">{{ state.hasKsu ? `sing-box · ${transparentModeLabel}` : t("请在模块管理器中打开") }}</span>
+            </div>
+            <Button class="mn-control-service-action" variant="outline" :disabled="runtimeBusy || !state.hasKsu"
+              :loading="isRunning('toggle-sing-box')" @click="toggleSingBox">
+              {{ state.runtime.singBoxState === 'sing-box' ? t("停止服务") : t("启动服务") }}
+            </Button>
+          </div>
+        </article>
+        <article class="mn-control-metric">
+          <div class="mn-control-metric-heading"><Cpu :size="18" /><span>{{ t("CPU 占用") }}</span></div>
+          <strong class="mn-control-metric-value">—</strong>
+          <span class="mn-control-muted">{{ t("暂不可用") }}</span>
+        </article>
+        <article class="mn-control-metric">
+          <div class="mn-control-metric-heading"><MemoryStick :size="18" /><span>{{ t("内存占用（RSS）") }}</span></div>
+          <strong class="mn-control-metric-value">
+            <template v-if="state.hasKsu && state.runtime.singBoxState === 'sing-box' && state.runtime.singBoxRssKib != null">
+              {{ (state.runtime.singBoxRssKib / 1024).toFixed(1) }} <small>MiB</small>
             </template>
-            <template v-else>{{ t("暂不可用") }}</template>
-          </dd>
-        </dl>
+            <template v-else>—</template>
+          </strong>
+          <span class="mn-control-muted">{{ state.runtime.singBoxState === 'sing-box' && state.runtime.singBoxRssKib == null ? t("暂不可用") : "sing-box" }}</span>
+        </article>
       </div>
-
-      <Button
-        class="mn-control-power"
-        :disabled="runtimeBusy || !state.hasKsu"
-        :loading="isRunning('toggle-sing-box')"
-        @click="toggleSingBox"
-      >
-        <Power :size="18" />
-        {{ state.runtime.singBoxState === 'sing-box' ? t("停止服务") : t("启动服务") }}
-      </Button>
       <div class="mn-control-shortcuts">
         <Button variant="ghost" :disabled="!state.hasKsu" :loading="isRunning('open-zashboard')" @click="withAction('open-zashboard', () => openSingBoxUi('zashboard'))">
           <ExternalLink :size="16" />{{ t("节点面板") }} </Button>
@@ -542,7 +608,8 @@ onMounted(() => {
       </Card>
 
       <Card class="grid gap-2" :aria-busy="hotspotPolicyPhase === 'loading'">
-        <label class="mn-hotspot-switch">
+        <div class="mn-hotspot-row">
+          <label class="mn-hotspot-switch">
           <input
             type="checkbox"
             role="switch"
@@ -560,12 +627,15 @@ onMounted(() => {
             </span>
           </span>
           <span class="mn-hotspot-track" aria-hidden="true" />
-        </label>
-        <details class="mn-control-details">
-          <summary>{{ t("共享设置") }}</summary>
-          <p id="hotspot-proxy-description" class="text-sm leading-6 text-[var(--mn-ink-muted)]"> {{ t("热点设备使用 proxy 代理组；不勾选时统一走 direct。TUN 模式会关闭 Android 热点硬件加速，关闭代理后恢复原设置；eBPF 模式使用共享 TC。") }} </p>
+          </label>
+          <Button variant="ghost" size="icon" :aria-label="t('热点代理帮助')" :aria-expanded="showHotspotHelp" @click="showHotspotHelp = !showHotspotHelp">
+            <HelpCircle :size="17" aria-hidden="true" />
+          </Button>
+        </div>
+        <div v-if="showHotspotHelp" id="hotspot-proxy-description" class="mn-help-popover" role="dialog">
+          <p>{{ t("热点设备使用 proxy 代理组；不勾选时统一走 direct。TUN 模式会关闭 Android 热点硬件加速，关闭代理后恢复原设置；eBPF 模式使用共享 TC。") }}</p>
           <Button v-if="state.hasKsu && hotspotProxyEnabled" variant="ghost" :disabled="runtimeBusy" @click="retryHotspotPolicy">{{ t("重新读取") }}</Button>
-        </details>
+        </div>
         <div v-if="state.hasKsu && hotspotPolicyPhase === 'error'" class="mn-control-notice mn-tone-warn" role="alert">
           <p>{{ hotspotPolicyError }}</p>
           <Button variant="outline" :loading="isRunning('hotspot-policy-refresh')" @click="retryHotspotPolicy">
@@ -573,112 +643,68 @@ onMounted(() => {
         </div>
       </Card>
 
-      <Card class="mn-wifi-card grid gap-3">
+      <Card class="mn-wifi-card grid gap-3" :aria-busy="isRunning('wifi-toggle')">
         <CardHeading :title="t('Wi-Fi 自动切换')">
           <Badge :tone="state.wifiPolicy.observed && state.wifiPolicy.connected ? 'success' : 'neutral'">
             {{ !state.wifiPolicy.observed ? t("状态未知") : state.wifiPolicy.connected ? state.wifiPolicy.ssid || t("Wi-Fi 已连接") : t("未连接 Wi-Fi") }}
           </Badge>
-          <Badge :tone="state.wifiPolicy.enabled ? 'success' : 'warning'">
-            {{ state.wifiPolicy.enabled ? t("已启用") : t("已停用") }}
-          </Badge>
-          <Button
-            :loading="isRunning('wifi-toggle')"
-            :disabled="runtimeBusy || !state.hasKsu"
-            @click="toggleWifiPolicy"
-          >
-            <Power :size="17" />{{ state.wifiPolicy.enabled ? t("停用") : t("启用") }}
-          </Button>
+          <label class="mn-hotspot-switch mn-wifi-switch">
+            <input type="checkbox" role="switch" class="mn-hotspot-input" :checked="state.wifiPolicy.enabled"
+              :disabled="runtimeBusy || !state.hasKsu || isRunning('wifi-toggle') || !state.wifiPolicy.observed"
+              :aria-label="t('Wi-Fi 自动切换')" @change="toggleWifiPolicyFromSwitch" />
+            <span class="mn-hotspot-track" aria-hidden="true" />
+          </label>
         </CardHeading>
 
-        <div v-if="state.wifiPolicy.enabled" class="grid gap-2 sm:grid-cols-2">
+        <div v-if="state.wifiPolicy.enabled" class="flex flex-wrap gap-2" role="group" :aria-label="t('名单模式')">
           <Button
             v-for="mode in wifiPolicyModes"
-            :key="mode"
+            :key="mode.value"
             variant="outline"
-            :aria-pressed="state.wifiPolicy.policyMode === mode"
-            :disabled="!state.hasKsu || runtimeBusy || state.wifiPolicy.policyMode === mode"
+            :aria-pressed="state.wifiPolicy.policyMode === mode.value"
+            :disabled="!state.hasKsu || runtimeBusy || state.wifiPolicy.policyMode === mode.value"
             :class="[
               'mn-wifi-mode-btn',
-              state.wifiPolicy.policyMode === mode
+              state.wifiPolicy.policyMode === mode.value
                 ? 'mn-wifi-mode-btn-active'
                 : 'mn-wifi-mode-btn-inactive',
             ]"
-            @click="setWifiPolicyMode(mode)"
+            @click="setWifiPolicyMode(mode.value)"
           >
-            <span class="block w-full">
-              <span class="font-semibold">{{ mode === "blacklist" ? t("黑名单") : t("白名单") }}</span>
-              <span class="mt-1 block text-xs">
-                {{ mode === "blacklist" ? t("名单命中 → Direct") : t("名单命中 → Rule") }}
-              </span>
-            </span>
+            {{ t(mode.label) }}
           </Button>
         </div>
 
-        <details class="mn-control-details">
-          <summary>{{ t("当前 BSSID 与规则") }}</summary>
-          <div class="grid gap-3 md:grid-cols-3">
-            <StatTile :label="t('当前 BSSID')" :value="state.wifiPolicy.bssid || '—'" />
-            <StatTile :label="t('匹配结果')" :value="!state.wifiPolicy.observed ? t('状态未知') : state.wifiPolicy.matched ? t('已命中名单') : t('未命中')" />
-            <StatTile :label="t('代理模式')" :value="`${state.wifiPolicy.currentMode} → ${state.wifiPolicy.desiredMode}`" />
+        <details v-if="state.wifiPolicy.enabled" class="mn-control-details mn-wifi-rules-details">
+          <summary>{{ t("指定网络列表") }}</summary>
+          <div class="grid gap-3">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <div><p class="text-xs text-[var(--mn-ink-muted)]">{{ state.wifiPolicy.policyMode === 'blacklist' ? t("列表中的网络直连，其余网络走代理。") : t("列表中的网络走代理，其余网络直连。") }}</p><p class="text-xs text-[var(--mn-ink-muted)]">{{ t("当前连接") }}：{{ state.wifiPolicy.ssid || t("未连接") }} · {{ state.wifiPolicy.bssid || '—' }}</p></div>
+            <Button variant="secondary" :disabled="!state.wifiPolicy.connected || runtimeBusy" @click="addCurrentWifi"><Plus :size="16" />{{ t("添加当前 Wi-Fi") }}</Button>
           </div>
-
-          <div class="grid gap-3 lg:grid-cols-2">
-            <div class="grid gap-2">
-              <div class="flex gap-2">
-                <Input
-                  v-model="wifiSsidInput"
-                  aria-label="Wi-Fi SSID"
-                  :placeholder="t('Wi-Fi 名称（SSID）')"
-                  @keyup.enter="addWifiEntry('ssid')"
-                />
-                <Button
-                  variant="secondary"
-                  :loading="isRunning('wifi-add-ssid')"
-                  @click="addWifiEntry('ssid')"
-                ><Plus :size="17" />SSID</Button>
-              </div>
-              <div class="flex flex-wrap gap-2">
-                <span v-if="!state.wifiPolicy.ssids.length" class="mn-empty text-xs">{{ t("还没有 SSID 条目") }}</span>
-                <RemovableTag
-                  v-for="ssid in state.wifiPolicy.ssids"
-                  :key="ssid"
-                  variant="soft"
-                  remove-variant="ghost"
-                  :loading="isRunning(`wifi-remove-ssid-${ssid}`)"
-                  :remove-label="t('移除 SSID {ssid}', { ssid: ssid })"
-                  @remove="removeWifiEntry('ssid', ssid)"
-                >{{ ssid }}</RemovableTag>
-              </div>
-            </div>
-
-            <div class="grid gap-2">
-              <div class="flex gap-2">
-                <Input
-                  v-model="wifiBssidInput"
-                  aria-label="Wi-Fi BSSID"
-                  :placeholder="t('BSSID 地址')"
-                  @keyup.enter="addWifiEntry('bssid')"
-                />
-                <Button
-                  variant="secondary"
-                  :loading="isRunning('wifi-add-bssid')"
-                  @click="addWifiEntry('bssid')"
-                ><Plus :size="17" />BSSID</Button>
-              </div>
-              <div class="flex flex-wrap gap-2">
-                <span v-if="!state.wifiPolicy.bssids.length" class="mn-empty text-xs">{{ t("还没有 BSSID 条目") }}</span>
-                <RemovableTag
-                  v-for="bssid in state.wifiPolicy.bssids"
-                  :key="bssid"
-                  class="font-mono"
-                  variant="soft"
-                  remove-variant="ghost"
-                  :loading="isRunning(`wifi-remove-bssid-${bssid}`)"
-                  :remove-label="t('移除 BSSID {bssid}', { bssid: bssid })"
-                  @remove="removeWifiEntry('bssid', bssid)"
-                >{{ bssid }}</RemovableTag>
-              </div>
-            </div>
+          <div class="grid gap-2 sm:grid-cols-2">
+            <div class="flex gap-2"><Input v-model="wifiSsidInput" :aria-label="t('Wi-Fi 名称（SSID）')" :placeholder="t('输入 SSID')" @keyup.enter="addWifiEntry('ssid')" /><Button variant="secondary" :loading="isRunning('wifi-add-ssid')" @click="addWifiEntry('ssid')"><Plus :size="16" />SSID</Button></div>
+            <div class="flex gap-2"><Input v-model="wifiBssidInput" aria-label="BSSID" :placeholder="t('输入 BSSID')" @keyup.enter="addWifiEntry('bssid')" /><Button variant="secondary" :loading="isRunning('wifi-add-bssid')" @click="addWifiEntry('bssid')"><Plus :size="16" />BSSID</Button></div>
+          </div>
+          <div class="overflow-x-auto">
+            <table class="mn-wifi-table w-full text-sm">
+              <thead><tr><th>{{ t("类型") }}</th><th>{{ t("规则值") }}</th><th>{{ t("操作") }}</th></tr></thead>
+              <tbody>
+                <tr v-for="entry in [...state.wifiPolicy.ssids.map(value => ({ kind: 'ssid' as const, value })), ...state.wifiPolicy.bssids.map(value => ({ kind: 'bssid' as const, value }))]" :key="`${entry.kind}:${entry.value}`">
+                  <td>{{ entry.kind === 'ssid' ? 'SSID' : 'BSSID' }}</td>
+                  <td>
+                    <Input v-if="editingWifiEntry?.kind === entry.kind && editingWifiEntry.value === entry.value" v-model="editingWifiValue" @keyup.enter="saveWifiEntryEdit" />
+                    <span v-else :class="entry.kind === 'bssid' ? 'font-mono' : ''">{{ entry.value }}</span>
+                  </td>
+                  <td class="whitespace-nowrap">
+                    <template v-if="editingWifiEntry?.kind === entry.kind && editingWifiEntry.value === entry.value"><Button variant="secondary" @click="saveWifiEntryEdit">{{ t("保存") }}</Button><Button variant="ghost" @click="editingWifiEntry = null">{{ t("取消") }}</Button></template>
+                    <template v-else><Button variant="ghost" :aria-label="t('编辑规则')" @click="beginEditWifiEntry(entry.kind, entry.value)"><Pencil :size="16" /></Button><Button variant="ghost" :aria-label="t('删除规则')" @click="removeWifiEntry(entry.kind, entry.value)">×</Button></template>
+                  </td>
+                </tr>
+                <tr v-if="!state.wifiPolicy.ssids.length && !state.wifiPolicy.bssids.length"><td colspan="3" class="mn-empty text-center">{{ t("暂无 Wi-Fi 规则") }}</td></tr>
+              </tbody>
+            </table>
+          </div>
           </div>
         </details>
       </Card>
@@ -718,55 +744,56 @@ onMounted(() => {
 }
 
 .mn-control-hero {
-  padding: 8px 0 24px;
+  padding: 4px 0 14px;
 }
 
-.mn-control-status {
+.mn-control-metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.mn-control-metric {
+  display: grid;
+  min-width: 0;
+  gap: 7px;
+  align-content: start;
+  border: 1px solid var(--mn-border);
+  border-radius: var(--mn-radius-lg);
+  padding: 12px 14px;
+  background: var(--mn-surface-raised);
+  box-shadow: var(--mn-shadow-card);
+}
+
+.mn-control-service { grid-column: 1 / -1; }
+.mn-control-metric-heading {
   display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 20px;
-}
-
-.mn-control-state-heading { min-width: 0; }
-.mn-control-memory { margin: 0; min-width: 0; }
-.mn-control-memory dt { color: var(--mn-ink-muted); font-size: .8125rem; }
-.mn-control-memory dd {
-  margin: 8px 0 0;
-  color: var(--mn-ink);
-  font-size: 1.75rem;
-  font-weight: 500;
-  line-height: 1.2;
-  font-variant-numeric: tabular-nums;
-}
-.mn-control-memory dd > span { font-size: .8125rem; font-weight: 400; color: var(--mn-ink-muted); }
-.mn-control-memory dd[data-unavailable="true"] { font-size: 1rem; color: var(--mn-ink-muted); }
-@media (max-width: 480px) {
-  .mn-control-memory { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; width: 100%; }
-  .mn-control-memory dd { margin: 0; font-size: 1.375rem; }
-}
-
-.mn-control-status h2 {
-  margin: 0 0 8px;
-  color: var(--mn-ink);
-  font-size: clamp(34px, 9vw, 44px);
-  font-weight: 450;
-  line-height: 1.15;
-  letter-spacing: -0.035em;
-}
-
-.mn-control-subtitle {
-  display: flex;
-  min-height: 24px;
   align-items: center;
   gap: 8px;
-  margin: 0;
   color: var(--mn-ink-muted);
-  font-size: 14px;
-  overflow-wrap: anywhere;
+  font-size: 13px;
 }
+
+.mn-control-metric-heading :deep(svg) { color: var(--mn-primary); }
+.mn-control-service-row,
+.mn-control-service-value {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 9px;
+}
+.mn-control-service-row { justify-content: space-between; }
+.mn-control-service-value { flex-wrap: wrap; }
+.mn-control-service-value strong { font-size: 17px; font-weight: 550; }
+.mn-control-muted { color: var(--mn-ink-muted); font-size: 12px; }
+.mn-control-metric-value {
+  min-height: 27px;
+  color: var(--mn-ink);
+  font-size: 21px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+.mn-control-metric-value small { color: var(--mn-ink-muted); font-size: 12px; font-weight: 400; }
 
 .mn-control-dot {
   width: 6px;
@@ -775,17 +802,17 @@ onMounted(() => {
   border-radius: 50%;
 }
 
-.mn-control-power {
-  width: 100%;
-  min-height: 56px;
-  font-size: 15px;
+.mn-control-service-action {
+  min-height: 34px;
+  padding-inline: 10px;
+  font-size: 12px;
 }
 
 .mn-control-shortcuts {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-  margin-top: 10px;
+  gap: 4px;
+  margin-top: 5px;
 }
 
 .mn-control-shortcuts > :first-child {
@@ -803,7 +830,12 @@ onMounted(() => {
 
 .mn-control-settings {
   display: grid;
+  gap: 8px;
+}
+
+.mn-control-settings :deep(.magic-card) {
   gap: 12px;
+  padding: 14px;
 }
 
 .mn-control-notice {
@@ -828,7 +860,7 @@ onMounted(() => {
 
 .mn-control-details > summary {
   display: flex;
-  min-height: 40px;
+  min-height: 32px;
   cursor: pointer;
   align-items: center;
   gap: 8px;
@@ -851,14 +883,20 @@ onMounted(() => {
 }
 
 .mn-control-details[open] > :not(summary) {
-  margin-top: 10px;
+  margin-top: 7px;
+}
+
+@media (max-width: 420px) {
+  .mn-control-metric { padding: 10px; }
+  .mn-control-service-row { align-items: flex-start; }
+  .mn-control-service-value { gap: 6px; }
+  .mn-control-service-value .mn-control-muted { flex-basis: calc(100% - 16px); margin-left: 15px; }
 }
 
 .mn-wifi-mode-btn,
 :deep(.mn-wifi-mode-btn) {
-  min-height: 60px;
-  flex-direction: column;
-  align-items: stretch;
+  min-height: 40px;
+  align-items: center;
   border-radius: var(--mn-radius-md);
   border-color: var(--mn-border-strong);
   color: var(--mn-ink);
@@ -890,6 +928,24 @@ onMounted(() => {
   cursor: default;
 }
 
+.mn-wifi-switch {
+  min-height: 36px;
+  flex: 0 0 auto;
+}
+
+.mn-wifi-table th,
+.mn-wifi-table td {
+  padding: 9px 10px;
+  border-bottom: 1px solid var(--mn-border);
+  text-align: left;
+}
+
+.mn-wifi-table th {
+  color: var(--mn-ink-muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
 .mn-hotspot-switch {
   position: relative;
   display: flex;
@@ -897,6 +953,38 @@ onMounted(() => {
   align-items: center;
   justify-content: space-between;
   gap: 16px;
+}
+
+.mn-hotspot-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.mn-hotspot-row .mn-hotspot-switch {
+  flex: 1 1 auto;
+}
+
+.mn-help-popover {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  border: 1px solid var(--mn-border);
+  border-radius: var(--mn-radius-md);
+  padding: 9px 10px;
+  background: var(--mn-surface-sunken);
+  color: var(--mn-ink-muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.mn-help-popover p { margin: 0; }
+
+.mn-wifi-rules-details > summary {
+  color: var(--mn-ink);
+  font-size: 14px;
+  font-weight: 550;
 }
 
 .mn-hotspot-input {

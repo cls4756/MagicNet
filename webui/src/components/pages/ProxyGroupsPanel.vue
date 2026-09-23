@@ -21,14 +21,11 @@ type PendingProxyAction = {
   run: () => Promise<void>;
 };
 
-type ProxyView = "select" | "manual" | "auto";
-
 const { runCli, state } = useMagicNet();
 const { isRunning, withAction } = useActionLock();
 const rawOutput = ref("");
 const copied = ref(false);
 const groupQuery = ref("");
-const activeView = ref<ProxyView>("select");
 const groupDelays = ref<Record<string, NodeDelayEntry[]>>({});
 const expandedGroups = ref<Set<string>>(new Set());
 const pendingAction = ref<PendingProxyAction | null>(null);
@@ -51,23 +48,7 @@ const allFilteredGroups = computed(() => {
     ...group.proxies
   ].some((value) => sanitizeProxyName(value).toLowerCase().includes(query)));
 });
-const visibleGroups = computed(() => allFilteredGroups.value.filter((group) => {
-  if (activeView.value === "auto") return group.kind === "auto";
-  if (activeView.value === "manual") return group.kind === "selector";
-  return group.kind === "provider" || group.kind === "selector";
-}));
-const viewCounts = computed(() => ({
-  select: allFilteredGroups.value.filter((group) => group.kind === "provider" || group.kind === "selector").length,
-  manual: allFilteredGroups.value.filter((group) => group.kind === "selector").length,
-  auto: allFilteredGroups.value.filter((group) => group.kind === "auto").length,
-}));
-const visibleNodes = computed(() => {
-  const query = groupQuery.value.trim().toLowerCase();
-  const nodes = snapshot.value?.nodes || [];
-  if (!query) return nodes;
-  return nodes.filter((node) => [node.name, node.type]
-    .some((value) => sanitizeProxyName(value).toLowerCase().includes(query)));
-});
+const visibleGroups = computed(() => allFilteredGroups.value);
 const groupNames = computed(() => new Set((snapshot.value?.groups || []).map((group) => group.name)));
 
 function groupKindLabel(group: ProxyGroupSummary): string {
@@ -79,12 +60,6 @@ function groupKindLabel(group: ProxyGroupSummary): string {
 function memberKindLabel(node: string): string {
   if (["direct", "block", "dns", "tun"].includes(node.trim().toLowerCase())) return t("内置");
   return groupNames.value.has(node) ? t("组") : t("节点");
-}
-
-function viewLabel(view: ProxyView): string {
-  if (view === "manual") return t("手动切换");
-  if (view === "auto") return t("自动选择");
-  return t("节点选择");
 }
 
 async function refreshGroups(): Promise<void> {
@@ -224,7 +199,7 @@ watch(() => state.subscriptions.lastSuccessEpoch, (value, previous) => {
       <div class="flex flex-wrap items-start justify-between gap-3">
         <div class="min-w-0">
           <h3 class="inline-flex items-center gap-2 text-base font-semibold"><Route :size="17" /> {{ t("代理") }}</h3>
-          <p class="mt-1 text-sm leading-6 text-[var(--mn-ink-muted)]"> {{ t("按节点选择、手动切换和自动选择查看代理组，避免把运行时组误认为订阅来源。") }}
+          <p class="mt-1 text-sm leading-6 text-[var(--mn-ink-muted)]"> {{ t("按策略组查看和切换当前代理节点；自动测速组由 sing-box 自行选择出口。") }}
           </p>
         </div>
         <div class="flex gap-2">
@@ -236,43 +211,11 @@ watch(() => state.subscriptions.lastSuccessEpoch, (value, previous) => {
         </div>
       </div>
 
-    <nav class="proxy-view-tabs" :aria-label="t('代理分类')">
-      <button v-for="view in (['select', 'manual', 'auto'] as ProxyView[])" :key="view" type="button" :class="activeView === view ? 'is-active' : ''" @click="activeView = view">
-        <span>{{ viewLabel(view) }}</span>
-        <small>{{ viewCounts[view] }}</small>
-      </button>
-    </nav>
-
-    <div class="proxy-explanation">
-      <p>{{ activeView === "auto" ? t("自动选择由 sing-box 根据测速结果决定出口，不需要逐个节点手动切换。") : activeView === "manual" ? t("手动切换用于明确指定一个策略组当前使用的节点。") : t("节点选择展示当前运行时可用的节点和策略组；组里的成员可能是节点，也可能是另一个组。") }}</p>
-      <div class="proxy-metrics">
-        <div><strong>{{ snapshot?.nodes.length || 0 }}</strong><span>{{ t("运行时节点") }}</span></div>
-        <div><strong>{{ visibleGroups.length }}</strong><span>{{ viewLabel(activeView) }}</span></div>
-        <div><strong>{{ state.subscriptions.lastImportedCount }}</strong><span>{{ t("最近导入") }}</span></div>
-      </div>
-    </div>
-
     <div class="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
       <SearchField v-model="groupQuery" :placeholder="t('搜索代理组或节点')" />
       <span class="text-sm text-[var(--mn-ink-muted)]">
-        {{ t("{visible} / {total} 组", { visible: visibleGroups.length, total: viewCounts[activeView] }) }} </span>
+        {{ t("{visible} 组", { visible: visibleGroups.length }) }} </span>
     </div>
-
-    <section v-if="visibleNodes.length && activeView === 'select'" class="proxy-node-section" :aria-label="t('运行时节点')">
-      <div class="proxy-subheading">
-        <div>
-          <h4>{{ t("运行时节点") }}</h4>
-          <p>{{ t("这些是当前 API 返回的非策略组出站；节点可能同时属于多个组。") }}</p>
-        </div>
-        <span>{{ t("{value} 个", { value: visibleNodes.length }) }}</span>
-      </div>
-      <div class="proxy-node-grid">
-        <div v-for="node in visibleNodes" :key="node.name" class="proxy-node-card">
-          <span class="truncate">{{ sanitizeProxyName(node.name) }}</span>
-          <span>{{ sanitizeProxyName(node.type) }}</span>
-        </div>
-      </div>
-    </section>
 
     <ConfirmPanel
       v-if="pendingAction"
@@ -311,7 +254,7 @@ watch(() => state.subscriptions.lastSuccessEpoch, (value, previous) => {
             <p class="proxy-group-title"><span class="proxy-group-symbol">{{ group.kind === "auto" ? "♻" : group.kind === "provider" ? "▣" : "☑" }}</span>{{ sanitizeProxyName(group.name) }}</p>
             <p class="proxy-group-type">{{ groupKindLabel(group) }} · {{ sanitizeProxyName(group.type) }}</p>
           </div>
-          <span class="proxy-group-current">{{ group.selectable ? sanitizeProxyName(group.now || t("未选择")) : t("自动选择") }}</span>
+          <span class="proxy-group-current">{{ sanitizeProxyName(group.now || (group.selectable ? t("未选择") : t("自动选择"))) }}</span>
         </div>
         <div class="proxy-group-card-meta">
           <p>
@@ -362,28 +305,8 @@ watch(() => state.subscriptions.lastSuccessEpoch, (value, previous) => {
 </template>
 
 <style scoped>
-.proxy-explanation { display: grid; gap: 12px; border: 1px solid var(--mn-border); border-radius: var(--mn-radius-sm); padding: 14px; background: var(--mn-surface-sunken); }
-.proxy-explanation p { margin: 0; color: var(--mn-ink-muted); font-size: .8125rem; line-height: 1.65; }
-.proxy-view-tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; border-bottom: 1px solid var(--mn-border); }
-.proxy-view-tabs button { display: flex; align-items: center; justify-content: center; gap: 7px; min-height: 52px; border: 0; border-bottom: 3px solid transparent; padding: 10px 6px; color: var(--mn-ink-muted); background: transparent; font-size: .875rem; font-weight: 550; }
-.proxy-view-tabs button:hover { color: var(--mn-ink); }
-.proxy-view-tabs button.is-active { border-bottom-color: var(--mn-clay); color: var(--mn-clay-ink); }
-.proxy-view-tabs small { display: inline-grid; place-items: center; min-width: 21px; height: 21px; border-radius: 999px; color: var(--mn-ink-muted); background: var(--mn-carrier); font-size: .6875rem; font-weight: 650; }
-.proxy-view-tabs button.is-active small { color: var(--mn-clay-ink); background: var(--mn-coral); }
-.proxy-metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
-.proxy-metrics div { display: grid; gap: 3px; min-width: 0; }
-.proxy-metrics strong { color: var(--mn-ink); font-size: 1.25rem; font-weight: 600; font-variant-numeric: tabular-nums; }
-.proxy-metrics span { color: var(--mn-ink-muted); font-size: .75rem; }
-.proxy-node-section { display: grid; gap: 10px; border-top: 1px solid var(--mn-border); padding-top: 14px; }
-.proxy-subheading { display: flex; align-items: end; justify-content: space-between; gap: 12px; }
-.proxy-subheading h4 { margin: 0; color: var(--mn-ink); font-size: .9375rem; font-weight: 600; }
-.proxy-subheading p { margin: 4px 0 0; color: var(--mn-ink-muted); font-size: .8125rem; line-height: 1.55; }
-.proxy-subheading > span { flex: 0 0 auto; color: var(--mn-ink-muted); font-size: .8125rem; }
-.proxy-node-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
-.proxy-node-card { display: grid; gap: 4px; min-width: 0; border: 1px solid var(--mn-border); border-radius: var(--mn-radius-sm); padding: 10px 11px; color: var(--mn-ink-soft); background: var(--mn-ivory); font-size: .8125rem; }
-.proxy-node-card > span:last-child { color: var(--mn-ink-muted); font-size: .75rem; }
 .proxy-group-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
-.proxy-group-card { display: grid; gap: 14px; min-width: 0; border: 1px solid var(--mn-border); border-radius: 18px; padding: 16px; background: var(--mn-ivory); }
+.proxy-group-card { display: grid; gap: 12px; min-width: 0; border: 1px solid var(--mn-border); border-radius: 18px; padding: 14px; background: var(--mn-ivory); }
 .proxy-group-card-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; min-width: 0; }
 .proxy-group-title { display: flex; align-items: center; gap: 8px; min-width: 0; margin: 0; color: var(--mn-ink); font-size: 1rem; font-weight: 650; overflow-wrap: anywhere; }
 .proxy-group-symbol { display: inline-grid; place-items: center; flex: 0 0 auto; width: 25px; height: 25px; border-radius: 7px; color: var(--mn-clay-ink); background: var(--mn-coral); font-size: 1rem; }
@@ -397,10 +320,9 @@ watch(() => state.subscriptions.lastSuccessEpoch, (value, previous) => {
 .proxy-member-card[aria-pressed="true"] { border-color: var(--mn-success); background: var(--mn-tone-ok-bg); }
 .proxy-member-card > span:nth-child(2) { color: var(--mn-ink-faint); font-size: .6875rem; }
 @media (max-width: 640px) {
-  .proxy-metrics, .proxy-node-grid, .proxy-group-grid { grid-template-columns: minmax(0, 1fr); }
+  .proxy-group-grid { grid-template-columns: minmax(0, 1fr); }
   .proxy-group-card-meta { grid-template-columns: minmax(0, 1fr) auto; }
   .proxy-group-card-meta p { grid-column: 1 / -1; }
   .proxy-member-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .proxy-subheading { align-items: start; }
 }
 </style>
