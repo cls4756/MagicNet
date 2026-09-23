@@ -23,7 +23,7 @@ for (const required of [
   '@submit="handleOnboardingSubmit"',
   "setPendingSubscriptionDraft(value)",
   "打开订阅",
-  'setTab("subs")',
+  'gotoTab("subs")',
   "takePendingSubscriptionDraft",
 ]) {
   assert.ok(

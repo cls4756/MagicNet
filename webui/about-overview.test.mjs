@@ -21,6 +21,10 @@ const aboutPage = readFileSync(
   "utf8",
 );
 const app = readFileSync(new URL("./src/App.vue", import.meta.url), "utf8");
+const dashboardPage = readFileSync(
+  new URL("./src/components/pages/DashboardPage.vue", import.meta.url),
+  "utf8",
+);
 const overviewSource = readFileSync(
   new URL("./src/components/pages/aboutOverview.ts", import.meta.url),
   "utf8",
@@ -76,11 +80,12 @@ assert.match(aboutPage, /InsightChip/);
 assert.match(aboutPage, /eBPF/);
 assert.doesNotMatch(aboutPage, /cli ebpf status/);
 
-assert.match(app, /type TabKey =[\s\S]*"about"/);
-assert.match(app, /import\("@\/components\/pages\/AboutPage\.vue"\)/);
-assert.match(app, /key: "about", label: "流量路径"/);
-assert.match(app, /@goto-tab="setTab"/);
-assert.match(app, /<KeepAlive :max="12">/);
+assert.match(app, /about: \{ workspace: "dashboard" \}/);
+assert.match(app, /dashboard: \(\) => import\("@\/components\/pages\/DashboardPage\.vue"\)/);
+assert.match(app, /@goto-tab="gotoTab"/);
+assert.match(app, /<KeepAlive :max="8">/);
+assert.match(dashboardPage, /import AboutPage from "\.\/AboutPage\.vue"/);
+assert.match(dashboardPage, /<AboutPage @goto-tab=/);
 
 const controlPage = readFileSync(
   new URL("./src/components/pages/ControlPage.vue", import.meta.url),

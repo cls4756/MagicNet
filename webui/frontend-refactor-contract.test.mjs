@@ -129,12 +129,12 @@ async function loadShippedModule(relativeFromWebui, importRewrites = []) {
 // --- Mobile paper tokens on the real styles entry ---
 const styles = read(stylesPath);
 for (const token of [
-  "#DEE3D4",
-  "#1C1E1B",
-  "#EFEFE7",
-  "#FAFAF7",
-  "#272824",
-  "#30382F",
+  "#EEF1F5",
+  "#1F2733",
+  "#FFFFFF",
+  "#2F6BED",
+  "#10151D",
+  "#5B8DEF",
 ]) {
   assert.match(
     styles,
@@ -192,28 +192,23 @@ assert.match(
 );
 assert.match(
   app,
-  /import\("@\/components\/pages\/ControlPage\.vue"\)/,
-  "App.vue must dynamic-import ControlPage",
+  /import\("@\/components\/pages\/DashboardPage\.vue"\)/,
+  "App.vue must dynamic-import DashboardPage",
 );
 assert.match(
   app,
-  /import\("@\/components\/pages\/AboutPage\.vue"\)/,
-  "App.vue must dynamic-import AboutPage",
+  /import\("@\/components\/pages\/NodesPage\.vue"\)/,
+  "App.vue must dynamic-import NodesPage",
 );
 assert.match(
   app,
-  /import\("@\/components\/pages\/ConfigPage\.vue"\)/,
-  "App.vue must dynamic-import ConfigPage",
+  /import\("@\/components\/pages\/SubscriptionsPage\.vue"\)/,
+  "App.vue must dynamic-import SubscriptionsPage",
 );
 assert.match(
   app,
-  /import\("@\/components\/pages\/AppsPage\.vue"\)/,
-  "App.vue must dynamic-import AppsPage",
-);
-assert.match(
-  app,
-  /import\("@\/components\/pages\/OutputPage\.vue"\)/,
-  "App.vue must dynamic-import OutputPage",
+  /import\("@\/components\/pages\/SettingsHubPage\.vue"\)/,
+  "App.vue must dynamic-import SettingsHubPage",
 );
 assert.doesNotMatch(
   app,
@@ -237,13 +232,13 @@ assert.match(
 );
 assert.match(
   app,
-  /运行|路由|配置|设置|工具/,
+  /仪表盘|节点|订阅|设置/,
   "primary workspace labels must remain",
 );
 assert.match(
   app,
-  /流量路径|应用|拦截规则|链式代理|订阅|协议栈|面板|输出/,
-  "all local page labels must remain reachable",
+  /control:[\s\S]*about:[\s\S]*proxy:[\s\S]*chain:[\s\S]*apps:[\s\S]*config:[\s\S]*output:/,
+  "legacy page targets must remain reachable",
 );
 assert.match(
   app,
@@ -308,7 +303,7 @@ assert.doesNotMatch(
 const pageHeader = read(join(src, "components", "ui", "PageHeader.vue"));
 assert.match(
   pageHeader,
-  /<div class="mn-page-header">/,
+  /<div v-else class="mn-page-header">/,
   "PageHeader must keep its title and actions in one normal-flow header",
 );
 assert.match(

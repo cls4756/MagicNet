@@ -5,8 +5,8 @@ import { decodeMachineData, machineErrorCode, machineFailureText, parseMachineDn
 const envelope = (command, data) => JSON.stringify({ schema: 1, ok: true, command, data });
 const dns = { profile: "default", primary: "bootstrap-local-dns", secondary: null, transport: "default", via_proxy: false, bootstrap_configured: "aliyun", bootstrap_transport: "doh" };
 const network = {
-  configured: { ipv6_mode: "prefer_ipv4", mtu: 1400, udp_timeout: "5m" },
-  effective: { ipv6_mode: "ipv4_only", stack: "mixed", mtu: 1280, udp_timeout: "3m" },
+  configured: { ipv6_mode: "prefer_ipv4", mtu: 1400, udp_timeout: "5m", dns_interception: "on" },
+  effective: { ipv6_mode: "ipv4_only", stack: "mixed", mtu: 1280, udp_timeout: "3m", dns_interception: "unavailable" },
 };
 const unsupported = JSON.stringify({ schema: 1, ok: false, command: "machine.error", error: { code: "machine.unsupported_command", message: "unsupported machine command" } });
 const domainForward = { configured: "enabled", core_support: "available", effective: "enabled", tcp_rule: true };
@@ -98,7 +98,7 @@ test("DNS profile expansion accepts all canonical profiles and via_proxy flag", 
 
 test("network status preserves configured/effective differences and unknown values", () => {
   assert.deepEqual(parseMachineNetwork(envelope("network.status", network)), network);
-  const unknown = { ...network, effective: { ipv6_mode: "unavailable", stack: "unavailable", mtu: null, udp_timeout: "unavailable" } };
+  const unknown = { ...network, effective: { ipv6_mode: "unavailable", stack: "unavailable", mtu: null, udp_timeout: "unavailable", dns_interception: "unavailable" } };
   assert.deepEqual(parseMachineNetwork(envelope("network.status", unknown)), unknown);
 });
 

@@ -55,11 +55,11 @@ for (const panel of deferredPanels) {
   assert.doesNotMatch(panel, /onMounted\(\(\) => \{\s*void refresh/);
 }
 
-assert.match(
-  app,
-  /if \(tab !== activeTab\.value\) \{[\s\S]*warmActiveTab\(tab\);[\s\S]*writeTabToLocation\(tab\);[\s\S]*void nextTick/,
-);
-assert.match(app, /@pointerenter="prefetchTab\(item\.key\)"/);
+assert.match(app, /function selectWorkspace\(workspace: WorkspaceKey\): void/);
+assert.match(app, /if \(changed\) warmWorkspace\(workspace\)/);
+assert.match(app, /void workspaceLoaders\[workspace\]\(\)/);
+assert.match(app, /writeLocation\(\)/);
+assert.match(app, /@pointerenter="prefetchWorkspace\(workspace\.key\)"/);
 assert.match(styles, /scrollbar-gutter:\s*stable/);
 assert.match(styles, /content-visibility:\s*auto/);
 assert.match(styles, /\.mn-workspace-header\s*\{[\s\S]*position:\s*sticky/);

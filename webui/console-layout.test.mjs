@@ -8,7 +8,7 @@ const css = read("./src/styles.css");
 const header = read("./src/components/ui/PageHeader.vue");
 
 test("page heading and both action slots share a wrapping header", () => {
-  assert.match(header, /<div class="mn-page-header">/);
+  assert.match(header, /<div v-else class="mn-page-header">/);
   assert.match(header, /<slot name="actions">\s*<slot \/>/);
   assert.match(
     css,

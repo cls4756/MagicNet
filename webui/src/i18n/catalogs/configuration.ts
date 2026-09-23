@@ -1,4 +1,5 @@
 export default {
+  "订阅 {value} 已用流量": ["Subscription {value} data used", "Использованный трафик подписки {value}"],
   "保存并应用": ["Save and apply", "Сохранить и применить"],
   "添加并启用": ["Add and enable", "Добавить и включить"],
   "正在更新订阅，完成后用量与节点会自动刷新。": ["Updating subscriptions. Usage and nodes will refresh automatically when complete.", "Подписки обновляются. После завершения данные трафика и узлы обновятся автоматически."],
