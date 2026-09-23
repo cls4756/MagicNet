@@ -1,4 +1,4 @@
-export type SettingsRoute = "proxy" | "kernel" | "apps" | "outbound" | "logs" | "maint";
+export type SettingsRoute = "proxy" | "kernel" | "apps" | "outbound" | "logs" | "maint" | "service";
 
 export const SETTINGS_ROUTES: readonly SettingsRoute[] = [
   "proxy",
@@ -7,4 +7,5 @@ export const SETTINGS_ROUTES: readonly SettingsRoute[] = [
   "outbound",
   "logs",
   "maint",
+  "service",
 ];

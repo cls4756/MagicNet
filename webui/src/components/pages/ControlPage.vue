@@ -1,19 +1,14 @@
 <script setup lang="ts">
 import { t } from "@/i18n";
 import {
-  Copy,
   DownloadCloud,
   ExternalLink,
   Plus,
   Power,
   Radar,
   RotateCcw,
-  Save,
   Share2,
-  ShieldCheck,
-  Unplug,
   Wifi,
-  Zap,
 } from "lucide-vue-next";
 import { computed, nextTick, onDeactivated, onMounted, ref, watch } from "vue";
 import Badge from "@/components/ui/Badge.vue";
@@ -26,20 +21,17 @@ import RemovableTag from "@/components/ui/RemovableTag.vue";
 import StatTile from "@/components/ui/StatTile.vue";
 import StatusDot from "@/components/ui/StatusDot.vue";
 import {
-  applyConfigAction,
   applyTransparentModeAction,
   type ControlDangerAction,
-  repairAction,
   restartSingBoxAction,
   setTransparentModeAction,
   singBoxToggleAction,
-  stopAllServicesAction,
 } from "@/components/pages/controlDangerActions";
 import { useActionLock } from "@/composables/useActionLock";
 import { useMagicNet } from "@/composables/useMagicNet";
 import { restoreFocusAfterUpdate, trapFocusWithin } from "@/lib/focus";
 import type { TransparentMode } from "@/types";
-import { copyText, execFailed } from "@/utils";
+import { execFailed } from "@/utils";
 import {
   buildControlRuntimeInsight,
   controlInsightTone,
@@ -59,7 +51,7 @@ const {
 const { isRunning, withAction } = useActionLock();
 
 const emit = defineEmits<{
-  (e: "goto-tab", tab: "about" | "health" | "output"): void;
+  (e: "goto-tab", tab: "health" | "output"): void;
 }>();
 type HotspotPolicyPhase = "loading" | "ready" | "error";
 type SingBoxStatusPresentation = {
@@ -70,7 +62,6 @@ type SingBoxStatusPresentation = {
 
 const pendingDangerAction = ref<ControlDangerAction | null>(null);
 const dangerConfirmCard = ref<HTMLElement | null>(null);
-const snapshotCopied = ref(false);
 const wifiSsidInput = ref("");
 const wifiBssidInput = ref("");
 const hotspotProxyEnabled = ref(false);
@@ -409,56 +400,6 @@ async function removeWifiEntry(
   );
 }
 
-async function copyControlSnapshot(): Promise<void> {
-  const report = [
-    "MagicNet control snapshot",
-    `has_ksu=${state.hasKsu ? 1 : 0}`,
-    `phase=${state.phase}`,
-    `task=${state.task || "none"}`,
-    `queue_depth=${state.queueDepth}`,
-    `sing_box_state=${state.runtime.singBoxState}`,
-    `sing_box=${state.runtime.singBox}`,
-    `fswatch=${state.runtime.fswatch}`,
-    `transparent_mode=${state.runtime.transparentMode}`,
-    `transparent_effective_mode=${state.runtime.transparentEffectiveMode}`,
-    `transparent_capability=${state.runtime.transparentCapability}`,
-    `transparent_local_cgroup=${state.runtime.transparentLocalCgroup}`,
-    `transparent_shared_tc=${state.runtime.transparentSharedTc}`,
-    `transparent_shared_interfaces=${sharedInterfacesLabel.value}`,
-    `transparent_transition=${state.runtime.transparentTransition}`,
-    `insight_status=${runtimeInsight.value.status}`,
-    `insight_title=${runtimeInsight.value.title}`,
-    `recommended_actions=${runtimeInsight.value.actions.join(",") || "none"}`,
-    `last_command_kind=${classifyLastCommand(state.lastCommand)}`,
-  ].join("\n");
-  snapshotCopied.value = await copyText(sanitizeControlSnapshot(report));
-  state.output = snapshotCopied.value
-    ? t("控制状态快照已复制。")
-    : t("剪贴板不可用，控制状态快照未复制。");
-}
-
-function sanitizeControlSnapshot(text: string): string {
-  return text
-    .replace(/https?:\/\/\S+/gi, "[filtered-url]")
-    .replace(
-      /\b(token|secret|password|passwd|authorization|bearer|api[_-]?key|key)\b\s*[:=]\s*\S+/gi,
-      "$1=[filtered]",
-    );
-}
-
-function classifyLastCommand(command: string): string {
-  if (!command) return "none";
-  if (/\bbackup\b/.test(command)) return "backup";
-  if (/\bsub(?:scription)?\b|sub set-file|subscription/i.test(command))
-    return "subscription";
-  if (/\btransparent\b/.test(command)) return "transparent";
-  if (/\bservice\b/.test(command)) return "service";
-  if (/\bconfig\b/.test(command)) return "config";
-  if (/\bmcp\b/.test(command)) return "mcp";
-  if (/\bwebui\b/.test(command)) return "webui";
-  return "other";
-}
-
 onMounted(() => {
   void refreshHotspotPolicy();
 });
@@ -632,10 +573,8 @@ onMounted(() => {
         </div>
       </Card>
 
-      <details class="mn-disclosure">
-        <summary><Wifi :size="18" />{{ t("Wi-Fi 自动切换") }}<span>{{ state.wifiPolicy.enabled ? t("已开启") : t("已关闭") }}</span></summary>
-      <Card class="grid gap-5">
-        <CardHeading :title="t('Wi-Fi 策略')">
+      <Card class="mn-wifi-card grid gap-3">
+        <CardHeading :title="t('Wi-Fi 自动切换')">
           <Badge :tone="state.wifiPolicy.observed && state.wifiPolicy.connected ? 'success' : 'neutral'">
             {{ !state.wifiPolicy.observed ? t("状态未知") : state.wifiPolicy.connected ? state.wifiPolicy.ssid || t("Wi-Fi 已连接") : t("未连接 Wi-Fi") }}
           </Badge>
@@ -651,18 +590,18 @@ onMounted(() => {
           </Button>
         </CardHeading>
 
-        <div class="grid gap-3 md:grid-cols-2">
+        <div v-if="state.wifiPolicy.enabled" class="grid gap-2 sm:grid-cols-2">
           <Button
             v-for="mode in wifiPolicyModes"
             :key="mode"
-            variant="ghost"
+            variant="outline"
             :aria-pressed="state.wifiPolicy.policyMode === mode"
             :disabled="!state.hasKsu || runtimeBusy || state.wifiPolicy.policyMode === mode"
             :class="[
-              '!h-auto !min-h-0 !justify-start !whitespace-normal !rounded-[var(--mn-radius-md)] !border-transparent !px-4 !py-3 text-left text-sm disabled:cursor-default',
+              'mn-wifi-mode-btn',
               state.wifiPolicy.policyMode === mode
-                ? 'bg-[var(--mn-cactus)] text-[var(--mn-on-accent)]'
-                : 'bg-[color-mix(in_srgb,var(--mn-ink)_5%,transparent)] text-[var(--mn-ink-soft)] hover:bg-[color-mix(in_srgb,var(--mn-ink)_8%,transparent)]',
+                ? 'mn-wifi-mode-btn-active'
+                : 'mn-wifi-mode-btn-inactive',
             ]"
             @click="setWifiPolicyMode(mode)"
           >
@@ -675,90 +614,75 @@ onMounted(() => {
           </Button>
         </div>
 
-        <div class="grid gap-3 md:grid-cols-3">
-          <StatTile :label="t('当前 BSSID')" :value="state.wifiPolicy.bssid || '—'" />
-          <StatTile :label="t('匹配结果')" :value="!state.wifiPolicy.observed ? t('状态未知') : state.wifiPolicy.matched ? t('已命中名单') : t('未命中')" />
-          <StatTile :label="t('代理模式')" :value="`${state.wifiPolicy.currentMode} → ${state.wifiPolicy.desiredMode}`" />
-        </div>
-
-        <div class="grid gap-5 lg:grid-cols-2">
-          <div class="grid gap-3">
-            <div class="flex gap-2">
-              <Input
-                v-model="wifiSsidInput"
-                aria-label="Wi-Fi SSID"
-                :placeholder="t('Wi-Fi 名称（SSID）')"
-                @keyup.enter="addWifiEntry('ssid')"
-              />
-              <Button
-                variant="secondary"
-                :loading="isRunning('wifi-add-ssid')"
-                @click="addWifiEntry('ssid')"
-              ><Plus :size="17" />SSID</Button>
-            </div>
-            <div class="flex flex-wrap gap-2">
-              <span v-if="!state.wifiPolicy.ssids.length" class="mn-empty text-xs">{{ t("还没有 SSID 条目") }}</span>
-              <RemovableTag
-                v-for="ssid in state.wifiPolicy.ssids"
-                :key="ssid"
-                variant="soft"
-                remove-variant="ghost"
-                :loading="isRunning(`wifi-remove-ssid-${ssid}`)"
-                :remove-label="t('移除 SSID {ssid}', { ssid: ssid })"
-                @remove="removeWifiEntry('ssid', ssid)"
-              >{{ ssid }}</RemovableTag>
-            </div>
+        <details class="mn-control-details">
+          <summary>{{ t("当前 BSSID 与规则") }}</summary>
+          <div class="grid gap-3 md:grid-cols-3">
+            <StatTile :label="t('当前 BSSID')" :value="state.wifiPolicy.bssid || '—'" />
+            <StatTile :label="t('匹配结果')" :value="!state.wifiPolicy.observed ? t('状态未知') : state.wifiPolicy.matched ? t('已命中名单') : t('未命中')" />
+            <StatTile :label="t('代理模式')" :value="`${state.wifiPolicy.currentMode} → ${state.wifiPolicy.desiredMode}`" />
           </div>
 
-          <div class="grid gap-3">
-            <div class="flex gap-2">
-              <Input
-                v-model="wifiBssidInput"
-                aria-label="Wi-Fi BSSID"
-                :placeholder="t('BSSID 地址')"
-                @keyup.enter="addWifiEntry('bssid')"
-              />
-              <Button
-                variant="secondary"
-                :loading="isRunning('wifi-add-bssid')"
-                @click="addWifiEntry('bssid')"
-              ><Plus :size="17" />BSSID</Button>
+          <div class="grid gap-3 lg:grid-cols-2">
+            <div class="grid gap-2">
+              <div class="flex gap-2">
+                <Input
+                  v-model="wifiSsidInput"
+                  aria-label="Wi-Fi SSID"
+                  :placeholder="t('Wi-Fi 名称（SSID）')"
+                  @keyup.enter="addWifiEntry('ssid')"
+                />
+                <Button
+                  variant="secondary"
+                  :loading="isRunning('wifi-add-ssid')"
+                  @click="addWifiEntry('ssid')"
+                ><Plus :size="17" />SSID</Button>
+              </div>
+              <div class="flex flex-wrap gap-2">
+                <span v-if="!state.wifiPolicy.ssids.length" class="mn-empty text-xs">{{ t("还没有 SSID 条目") }}</span>
+                <RemovableTag
+                  v-for="ssid in state.wifiPolicy.ssids"
+                  :key="ssid"
+                  variant="soft"
+                  remove-variant="ghost"
+                  :loading="isRunning(`wifi-remove-ssid-${ssid}`)"
+                  :remove-label="t('移除 SSID {ssid}', { ssid: ssid })"
+                  @remove="removeWifiEntry('ssid', ssid)"
+                >{{ ssid }}</RemovableTag>
+              </div>
             </div>
-            <div class="flex flex-wrap gap-2">
-              <span v-if="!state.wifiPolicy.bssids.length" class="mn-empty text-xs">{{ t("还没有 BSSID 条目") }}</span>
-              <RemovableTag
-                v-for="bssid in state.wifiPolicy.bssids"
-                :key="bssid"
-                class="font-mono"
-                variant="soft"
-                remove-variant="ghost"
-                :loading="isRunning(`wifi-remove-bssid-${bssid}`)"
-                :remove-label="t('移除 BSSID {bssid}', { bssid: bssid })"
-                @remove="removeWifiEntry('bssid', bssid)"
-              >{{ bssid }}</RemovableTag>
+
+            <div class="grid gap-2">
+              <div class="flex gap-2">
+                <Input
+                  v-model="wifiBssidInput"
+                  aria-label="Wi-Fi BSSID"
+                  :placeholder="t('BSSID 地址')"
+                  @keyup.enter="addWifiEntry('bssid')"
+                />
+                <Button
+                  variant="secondary"
+                  :loading="isRunning('wifi-add-bssid')"
+                  @click="addWifiEntry('bssid')"
+                ><Plus :size="17" />BSSID</Button>
+              </div>
+              <div class="flex flex-wrap gap-2">
+                <span v-if="!state.wifiPolicy.bssids.length" class="mn-empty text-xs">{{ t("还没有 BSSID 条目") }}</span>
+                <RemovableTag
+                  v-for="bssid in state.wifiPolicy.bssids"
+                  :key="bssid"
+                  class="font-mono"
+                  variant="soft"
+                  remove-variant="ghost"
+                  :loading="isRunning(`wifi-remove-bssid-${bssid}`)"
+                  :remove-label="t('移除 BSSID {bssid}', { bssid: bssid })"
+                  @remove="removeWifiEntry('bssid', bssid)"
+                >{{ bssid }}</RemovableTag>
+              </div>
             </div>
           </div>
-        </div>
+        </details>
       </Card>
-      </details>
 
-      <details class="mn-disclosure">
-        <summary>{{ t("服务管理") }}</summary>
-        <div class="mn-disclosure__body">
-          <div class="grid grid-cols-2 gap-3">
-            <Button variant="secondary" :disabled="runtimeBusy || !state.hasKsu" :loading="isRunning('apply-config')" @click="requestDangerAction(applyConfigAction(), $event.currentTarget)">
-              <Save :size="17" />{{ t("应用配置") }} </Button>
-            <Button variant="secondary" :disabled="runtimeBusy || !state.hasKsu" :loading="isRunning('repair')" @click="requestDangerAction(repairAction(), $event.currentTarget)">
-              <Zap :size="17" />{{ t("自修复") }} </Button>
-            <Button variant="outline" :disabled="!state.hasKsu" :loading="isRunning('api-groups')" @click="withAction('api-groups', () => runCli('api groups', t('检查 sing-box API')))">
-              <ShieldCheck :size="17" />{{ t("检查 API") }} </Button>
-            <Button variant="outline" @click="copyControlSnapshot"><Copy :size="17" />{{ snapshotCopied ? t("已复制") : t("复制快照") }}</Button>
-            <Button variant="outline" @click="emit('goto-tab', 'about')">{{ t("流量路径") }}</Button>
-            <Button variant="outline" :disabled="runtimeBusy || !state.hasKsu" :loading="isRunning('stop-all')" @click="requestDangerAction(stopAllServicesAction(), $event.currentTarget)">
-              <Unplug :size="17" />{{ t("停止全部") }} </Button>
-          </div>
-        </div>
-      </details>
     </div>
 
     <Teleport to="body">
@@ -794,7 +718,7 @@ onMounted(() => {
 }
 
 .mn-control-hero {
-  padding: 12px 0 32px;
+  padding: 8px 0 24px;
 }
 
 .mn-control-status {
@@ -802,8 +726,8 @@ onMounted(() => {
   flex-wrap: wrap;
   align-items: flex-end;
   justify-content: space-between;
-  gap: 24px;
-  margin-bottom: 32px;
+  gap: 16px;
+  margin-bottom: 20px;
 }
 
 .mn-control-state-heading { min-width: 0; }
@@ -825,9 +749,9 @@ onMounted(() => {
 }
 
 .mn-control-status h2 {
-  margin: 0 0 14px;
+  margin: 0 0 8px;
   color: var(--mn-ink);
-  font-size: clamp(40px, 11vw, 56px);
+  font-size: clamp(34px, 9vw, 44px);
   font-weight: 450;
   line-height: 1.15;
   letter-spacing: -0.035em;
@@ -860,8 +784,8 @@ onMounted(() => {
 .mn-control-shortcuts {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
-  margin-top: 12px;
+  gap: 10px;
+  margin-top: 10px;
 }
 
 .mn-control-shortcuts > :first-child {
@@ -879,11 +803,11 @@ onMounted(() => {
 
 .mn-control-settings {
   display: grid;
-  gap: 16px;
+  gap: 12px;
 }
 
 .mn-control-notice {
-  margin-top: 20px;
+  margin-top: 14px;
   border-radius: var(--mn-radius-md);
   padding: 12px 16px;
   font-size: 14px;
@@ -891,20 +815,20 @@ onMounted(() => {
 
 .mn-control-notice summary {
   display: flex;
-  min-height: 48px;
+  min-height: 40px;
   cursor: pointer;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
 }
 
 .mn-control-notice p,
 .mn-control-notice button {
-  margin-top: 12px;
+  margin-top: 10px;
 }
 
 .mn-control-details > summary {
   display: flex;
-  min-height: 48px;
+  min-height: 40px;
   cursor: pointer;
   align-items: center;
   gap: 8px;
@@ -927,7 +851,43 @@ onMounted(() => {
 }
 
 .mn-control-details[open] > :not(summary) {
-  margin-top: 12px;
+  margin-top: 10px;
+}
+
+.mn-wifi-mode-btn,
+:deep(.mn-wifi-mode-btn) {
+  min-height: 60px;
+  flex-direction: column;
+  align-items: stretch;
+  border-radius: var(--mn-radius-md);
+  border-color: var(--mn-border-strong);
+  color: var(--mn-ink);
+  text-align: left;
+  transition: border-color 150ms ease-out, background-color 150ms ease-out;
+}
+
+.mn-wifi-mode-btn-active,
+:deep(.mn-wifi-mode-btn-active) {
+  border-color: var(--mn-primary);
+  background: color-mix(in srgb, var(--mn-primary) 9%, transparent);
+  color: var(--mn-primary-strong);
+}
+
+.mn-wifi-mode-btn-inactive,
+:deep(.mn-wifi-mode-btn-inactive) {
+  background: transparent;
+  color: var(--mn-ink-muted);
+}
+
+.mn-wifi-mode-btn:hover,
+:deep(.mn-wifi-mode-btn:hover) {
+  border-color: var(--mn-border);
+  background: var(--mn-surface-sunken);
+}
+
+.mn-wifi-mode-btn:disabled,
+:deep(.mn-wifi-mode-btn:disabled) {
+  cursor: default;
 }
 
 .mn-hotspot-switch {

@@ -2,7 +2,6 @@ import { test, expect } from "@playwright/test";
 
 const pages = [
   ["run", "control", null],
-  ["run", "about", "流量路径"],
   ["route", "apps", "应用名单"],
   ["route", "block", "拦截规则"],
   ["route", "chain", "链式代理"],

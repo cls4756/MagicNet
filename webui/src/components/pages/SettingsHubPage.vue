@@ -45,6 +45,7 @@ const groups: readonly SettingsGroup[] = [
   {
     label: "系统",
     items: [
+      { key: "service", title: "服务管理", subtitle: "应用配置、自修复、API 检查等", icon: Cpu },
       { key: "logs", title: "日志", subtitle: "查看最近的命令输出", icon: ScrollText },
       { key: "maint", title: "维护", subtitle: "健康检查、终端与维护操作", icon: Wrench },
     ],
@@ -58,6 +59,7 @@ const detailPages: Record<SettingsRoute, Component> = {
   outbound: defineAsyncComponent(() => import("./settings/OutboundPage.vue")),
   logs: defineAsyncComponent(() => import("./OutputPage.vue")),
   maint: defineAsyncComponent(() => import("./settings/MaintenancePage.vue")),
+  service: defineAsyncComponent(() => import("./settings/ServiceManagementPage.vue")),
 };
 
 const detailTitles: Record<SettingsRoute, string> = {
@@ -67,6 +69,7 @@ const detailTitles: Record<SettingsRoute, string> = {
   outbound: "出站",
   logs: "日志",
   maint: "维护",
+  service: "服务管理",
 };
 
 const activeComponent = computed(() => (props.route ? detailPages[props.route] : null));

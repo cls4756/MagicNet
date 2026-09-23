@@ -71,7 +71,6 @@ const workspaces: readonly WorkspaceDefinition[] = [
 /** Legacy tab keys (deep links + cross-page navigation) map onto the new model. */
 const TAB_TARGETS: Record<string, { workspace: WorkspaceKey; settings?: SettingsRoute }> = {
   control: { workspace: "dashboard" },
-  about: { workspace: "dashboard" },
   subs: { workspace: "subs" },
   proxy: { workspace: "nodes" },
   chain: { workspace: "nodes" },

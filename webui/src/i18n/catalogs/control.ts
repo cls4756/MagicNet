@@ -156,6 +156,7 @@ export default {
   ],
   "名单命中 → Rule": ["List match → Rule", "Совпадение со списком → Rule"],
   "当前 BSSID": ["Current BSSID", "Текущий BSSID"],
+  "当前 BSSID 与规则": ["Current BSSID and rules", "Текущий BSSID и правила"],
   匹配结果: ["Match result", "Результат сопоставления"],
   已命中名单: ["Matched list", "Есть в списке"],
   未命中: ["No match", "Нет совпадения"],
@@ -172,7 +173,6 @@ export default {
   "检查 API": ["Check API", "Проверить API"],
   已复制: ["Copied", "Скопировано"],
   复制快照: ["Copy snapshot", "Копировать снимок"],
-  流量路径: ["Traffic path", "Путь трафика"],
   停止全部: ["Stop all", "Остановить всё"],
   取消控制操作: ["Cancel control operation", "Отменить операцию управления"],
   确认控制操作: [

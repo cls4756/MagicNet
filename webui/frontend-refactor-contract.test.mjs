@@ -237,7 +237,7 @@ assert.match(
 );
 assert.match(
   app,
-  /control:[\s\S]*about:[\s\S]*proxy:[\s\S]*chain:[\s\S]*apps:[\s\S]*config:[\s\S]*output:/,
+  /control:[\s\S]*proxy:[\s\S]*chain:[\s\S]*apps:[\s\S]*config:[\s\S]*output:/,
   "legacy page targets must remain reachable",
 );
 assert.match(
