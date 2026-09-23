@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { t } from "@/i18n";
-import { computed, ref } from "vue";
+import { computed, onMounted, ref } from "vue";
 import { Copy, RadioTower, RefreshCw } from "lucide-vue-next";
 import Button from "@/components/ui/Button.vue";
 import Card from "@/components/ui/Card.vue";
@@ -14,7 +14,7 @@ import { dnsStatusTone, formatDnsTestReport, parseDnsTestSummary } from "./dnsTe
 import ToolActionConfirmCard from "./ToolActionConfirmCard.vue";
 import type { PendingToolAction } from "./toolActions";
 
-const { state, runCli, refreshDns: refreshDnsStatus, shellQuote } = useMagicNet();
+const { state, runCli, refreshDns: refreshDnsStatus, refreshNetwork, shellQuote } = useMagicNet();
 const { isRunning, withAction } = useActionLock();
 const testDomain = ref("www.gstatic.com");
 const dnsTestOutput = ref("");
@@ -24,9 +24,20 @@ const runningDomain = ref("");
 const pendingDnsAction = ref<PendingToolAction | null>(null);
 const pendingDnsCurrentProfile = ref("");
 const pendingDnsProfile = ref("");
+const dnsInterception = ref<"on" | "off">("on");
+const effectiveDnsInterception = ref("unavailable");
+const networkPolicyLoaded = ref(false);
+const networkIpv6Mode = ref("prefer_ipv4");
+const networkMtu = ref("1400");
+const networkUdpTimeout = ref("5m");
 const pendingDnsPlan = computed(() => pendingDnsProfile.value
   ? buildDnsProfilePlan(pendingDnsCurrentProfile.value, pendingDnsProfile.value)
   : null);
+const dnsSettingsEnabled = computed(() => (
+  networkPolicyLoaded.value &&
+  dnsInterception.value === "on" &&
+  !pendingDnsAction.value?.key.startsWith("dns-interception-")
+));
 const dnsPlanCopied = ref(false);
 const quickDomains = ["www.gstatic.com", "cloudflare.com", "dns.google", "www.baidu.com"] as const;
 const dnsProfiles = [
@@ -52,11 +63,48 @@ async function runSetBootstrapDns(bootstrap: string): Promise<void> {
   });
 }
 
+async function runSetDnsInterception(interception: "on" | "off"): Promise<void> {
+  if (!networkPolicyLoaded.value) return;
+  await withAction(`dns-interception-${interception}`, async () => {
+    const command = `network set ${networkIpv6Mode.value} ${networkMtu.value} ${networkUdpTimeout.value} ${interception}`;
+    const text = await runCli(command, t("切换 DNS 劫持 {interception}", { interception }));
+    await refreshNetworkState(true);
+    if (execFailed(text)) return;
+  });
+}
+
+async function refreshNetworkState(silent = false): Promise<void> {
+  const status = await refreshNetwork(silent);
+  if (!status) return;
+  networkIpv6Mode.value = status.configured.ipv6_mode;
+  networkMtu.value = String(status.configured.mtu);
+  networkUdpTimeout.value = status.configured.udp_timeout;
+  dnsInterception.value = status.configured.dns_interception;
+  effectiveDnsInterception.value = status.effective.dns_interception;
+  networkPolicyLoaded.value = true;
+}
+
 async function refreshDnsState(): Promise<void> {
   pendingDnsAction.value = null;
   pendingDnsProfile.value = "";
   dnsPlanCopied.value = false;
-  await refreshDnsStatus();
+  await Promise.all([refreshDnsStatus(), refreshNetworkState(true)]);
+}
+
+function setDnsInterception(interception: string): void {
+  if (interception !== "on" && interception !== "off") return;
+  dnsInterception.value = interception;
+  pendingDnsProfile.value = "";
+  dnsPlanCopied.value = false;
+  pendingDnsAction.value = {
+    key: `dns-interception-${interception}`,
+    get title() { return t("切换 DNS 劫持到 {interception}", { interception }); },
+    get detail() { return interception === "on"
+      ? t("开启后才能设置 DNS Profile 和 Bootstrap DNS；应用会重建 sing-box 运行配置。")
+      : t("关闭后将使用系统 DNS，并禁用 DNS Profile 和 Bootstrap DNS 设置。"); },
+    command: `network set ${networkIpv6Mode.value} ${networkMtu.value} ${networkUdpTimeout.value} ${interception}`,
+    run: () => runSetDnsInterception(interception)
+  };
 }
 
 function setDnsProfile(profile: string): void {
@@ -115,6 +163,7 @@ async function copyDnsReport(): Promise<void> {
 }
 
 function cancelDnsAction(): void {
+  if (pendingDnsAction.value?.key.startsWith("dns-interception-")) void refreshNetworkState(true);
   pendingDnsAction.value = null;
   pendingDnsProfile.value = "";
   dnsPlanCopied.value = false;
@@ -150,11 +199,13 @@ function normalizeDomain(value: string): string {
   ));
   return valid ? domain : "";
 }
+
+onMounted(() => void refreshNetworkState(true));
 </script>
 
 <template>
   <Card class="grid gap-3">
-    <p class="text-sm leading-6 text-[var(--mn-ink-muted)]">{{ t("DNS profile 控制应用查询；Bootstrap DNS 独立负责默认本地解析和代理节点域名解析。保存后会应用配置并重启 sing-box。") }}</p>
+    <p class="text-sm leading-6 text-[var(--mn-ink-muted)]">{{ t("开启 DNS 劫持后，才能设置 DNS Profile 和 Bootstrap DNS。保存后会应用配置并重启 sing-box。") }}</p>
 
     <ToolActionConfirmCard
       v-if="pendingDnsAction"
@@ -181,12 +232,25 @@ function normalizeDomain(value: string): string {
       </Button>
     </div>
 
-    <div class="grid gap-3 sm:grid-cols-2">
+    <div class="grid gap-3 sm:grid-cols-3">
+      <label class="grid gap-1 text-xs text-[var(--mn-ink-muted)]">
+        <span>{{ t("DNS 劫持") }}</span>
+        <select
+          class="h-10 min-w-0 rounded-md border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-ivory)] px-3 text-sm text-[var(--mn-ink)] disabled:cursor-not-allowed disabled:opacity-55"
+          :value="dnsInterception"
+          :disabled="!networkPolicyLoaded"
+          @change="setDnsInterception(($event.target as HTMLSelectElement).value)"
+        >
+          <option value="on">{{ t("开启（推荐）") }}</option>
+          <option value="off">{{ t("关闭，使用系统 DNS") }}</option>
+        </select>
+      </label>
       <label class="grid gap-1 text-xs text-[var(--mn-ink-muted)]">
         <span>{{ t("应用 DNS Profile") }}</span>
         <select
-          class="h-10 min-w-0 rounded-md border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-ivory)] px-3 text-sm text-[var(--mn-ink)]"
+          class="h-10 min-w-0 rounded-md border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-ivory)] px-3 text-sm text-[var(--mn-ink)] disabled:cursor-not-allowed disabled:opacity-55"
           :value="pendingDnsProfile || state.dns.profile"
+          :disabled="!dnsSettingsEnabled"
           @change="setDnsProfile(($event.target as HTMLSelectElement).value)"
         >
           <option value="default">{{ t("默认 DNS") }}</option>
@@ -198,8 +262,9 @@ function normalizeDomain(value: string): string {
       <label class="grid gap-1 text-xs text-[var(--mn-ink-muted)]">
         <span>Bootstrap DNS</span>
         <select
-          class="h-10 min-w-0 rounded-md border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-ivory)] px-3 text-sm text-[var(--mn-ink)]"
+          class="h-10 min-w-0 rounded-md border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-ivory)] px-3 text-sm text-[var(--mn-ink)] disabled:cursor-not-allowed disabled:opacity-55"
           :value="state.dns.bootstrap"
+          :disabled="!dnsSettingsEnabled"
           @change="setBootstrapDns(($event.target as HTMLSelectElement).value)"
         >
           <option value="system">{{ t("Android 系统 DNS（支持局域网域名）") }}</option>
@@ -243,7 +308,8 @@ primary={{ state.dns.primary }}
 secondary={{ state.dns.secondary || "-" }}
 transport={{ state.dns.transport }}</pre>
     <pre class="max-h-24 overflow-auto rounded-md bg-[var(--mn-carrier-deep)] p-3 text-xs leading-6 text-[var(--mn-ink-soft)] whitespace-pre-wrap">bootstrap={{ state.dns.bootstrap }}
-bootstrap_transport={{ state.dns.bootstrapTransport }}</pre>
+bootstrap_transport={{ state.dns.bootstrapTransport }}
+dns_interception={{ effectiveDnsInterception }}</pre>
 
     <div v-if="dnsTestOutput" class="grid gap-2">
       <div class="rounded-md border p-3" :class="dnsStatusTone(dnsSummary.status)">

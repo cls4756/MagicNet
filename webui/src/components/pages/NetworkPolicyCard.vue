@@ -14,11 +14,11 @@ const ipv6Mode = ref("prefer_ipv4");
 const mtu = ref("1400");
 const udpTimeout = ref("5m");
 const dnsInterception = ref<"on" | "off">("on");
+const networkPolicyLoaded = ref(false);
 const effectiveMode = ref("unavailable");
 const effectiveStack = ref("unavailable");
 const effectiveMtu = ref("unavailable");
 const effectiveUdpTimeout = ref("unavailable");
-const effectiveDnsInterception = ref("unavailable");
 
 
 const modeHint = computed(() => {
@@ -38,10 +38,11 @@ async function refreshStatus(silent = false): Promise<void> {
   effectiveStack.value = status.effective.stack;
   effectiveMtu.value = status.effective.mtu === null ? "unavailable" : String(status.effective.mtu);
   effectiveUdpTimeout.value = status.effective.udp_timeout;
-  effectiveDnsInterception.value = status.effective.dns_interception;
+  networkPolicyLoaded.value = true;
 }
 
 async function applyPolicy(): Promise<void> {
+  if (!networkPolicyLoaded.value) return;
   await withAction("network-policy", async () => {
     const command = `network set ${ipv6Mode.value} ${mtu.value} ${udpTimeout.value} ${dnsInterception.value}`;
     const output = await runCli(command, t("应用 UDP / IPv6 策略"));
@@ -70,13 +71,6 @@ onMounted(() => void refreshStatus(true));
     </p>
     <div class="grid gap-3 sm:grid-cols-2">
       <label class="grid gap-1 text-xs text-[var(--mn-ink-muted)]">
-        {{ t("DNS 劫持") }}
-        <select v-model="dnsInterception" class="h-10 rounded-md border bg-transparent px-3 text-sm text-[var(--mn-ink)]">
-          <option value="on">{{ t("开启（推荐）") }}</option>
-          <option value="off">{{ t("关闭，使用系统 DNS") }}</option>
-        </select>
-      </label>
-      <label class="grid gap-1 text-xs text-[var(--mn-ink-muted)]">
         TUN MTU
         <select v-model="mtu" class="h-10 rounded-md border bg-transparent px-3 text-sm text-[var(--mn-ink)]">
           <option value="1280">{{ t("1280 · IPv6 最稳妥") }}</option>
@@ -97,7 +91,7 @@ onMounted(() => void refreshStatus(true));
       </label>
     </div>
     <div class="flex flex-wrap gap-2">
-      <Button :loading="isRunning('network-policy')" @click="applyPolicy">
+      <Button :disabled="!networkPolicyLoaded" :loading="isRunning('network-policy')" @click="applyPolicy">
         <Save :size="16" />{{ t("保存并应用") }}
       </Button>
       <Button variant="outline" :loading="isRunning('network-refresh')" @click="withAction('network-refresh', () => refreshStatus())">
@@ -108,6 +102,5 @@ onMounted(() => void refreshStatus(true));
 effective_stack={{ effectiveStack }}
 effective_mtu={{ effectiveMtu }}
 effective_udp_timeout={{ effectiveUdpTimeout }}</pre>
-    <pre class="overflow-auto rounded-md bg-[var(--mn-carrier-deep)] p-3 text-xs leading-6 text-[var(--mn-ink-soft)]">dns_interception={{ effectiveDnsInterception }}</pre>
   </Card>
 </template>
