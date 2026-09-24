@@ -675,9 +675,6 @@ onMounted(() => {
           <span class="min-w-0">
             <span class="mn-hotspot-label">
               <Share2 :size="17" />{{ t("热点代理") }}
-              <Button variant="ghost" size="icon" class="mn-hotspot-help" :aria-label="t('热点代理帮助')" :aria-expanded="showHotspotHelp" @click="showHotspotHelp = !showHotspotHelp">
-                <HelpCircle :size="17" aria-hidden="true" />
-              </Button>
             </span>
             <span id="hotspot-proxy-status" class="mn-hotspot-state">
               {{ !state.hasKsu ? t("未连接设备") : hotspotPolicyPhase === 'loading' ? t("读取中") : hotspotPolicyPhase === 'error' ? t("读取失败") : hotspotProxyEnabled ? hotspotForwardingLabel : t("已关闭") }}
@@ -685,6 +682,9 @@ onMounted(() => {
           </span>
           <span class="mn-hotspot-track" aria-hidden="true" />
           </label>
+          <Button variant="ghost" size="icon" class="mn-hotspot-help" :aria-label="t('热点代理帮助')" :aria-expanded="showHotspotHelp" @click="showHotspotHelp = !showHotspotHelp">
+            <HelpCircle :size="17" aria-hidden="true" />
+          </Button>
         </div>
         <div v-if="showHotspotHelp" id="hotspot-proxy-description" class="mn-help-popover" role="dialog">
           <p>{{ t("热点设备使用 proxy 代理组；不勾选时统一走 direct。TUN 模式会关闭 Android 热点硬件加速，关闭代理后恢复原设置；eBPF 模式使用共享 TC。") }}</p>
