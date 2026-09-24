@@ -41,8 +41,8 @@ assert.match(editor, /json-editor__error-jump/);
 assert.doesNotMatch(editor, /Array\.from\(\{ length: lineCount\.value \}/);
 assert.match(configPage, /analyzedConfigText/);
 assert.match(configPage, /configAnalysisPending/);
-assert.match(controlPage, /aria-label="Wi-Fi SSID"/);
-assert.match(controlPage, /aria-label="Wi-Fi BSSID"/);
+assert.match(controlPage, /:aria-label="t\('Wi-Fi 名称（SSID）'\)"/);
+assert.match(controlPage, /aria-label="BSSID"/);
 
 assert.match(visibilityTask, /globalThis\.IntersectionObserver/);
 assert.match(

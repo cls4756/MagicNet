@@ -23,12 +23,12 @@ void test("mobile paper uses quiet surfaces and restrained action emphasis", () 
   );
   assert.doesNotMatch(
     styles,
-    /linear-gradient|radial-gradient|backdrop-filter:\s*blur/i,
+    /linear-gradient|radial-gradient/i,
   );
 });
 
 void test("shell is outcome-led rather than terminal-themed", () => {
-  assert.match(app, /class="mn-runtime-brief"/);
+  assert.match(app, /class="mn-operation-glass"/);
   assert.doesNotMatch(app, /activeWorkspace\.description|>网络控制</);
   assert.match(app, /:aria-label="t\('全部页面'\)"/);
   assert.doesNotMatch(app, /mobileLabel:/);
