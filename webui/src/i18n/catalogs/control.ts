@@ -62,6 +62,23 @@ export default {
     "Disable automatic Wi-Fi mode",
     "Отключить автоматический режим Wi-Fi",
   ],
+  "该规则已存在。": [
+    "This rule already exists.",
+    "Это правило уже существует.",
+  ],
+  "更新 Wi-Fi 规则": [
+    "Update Wi-Fi rules",
+    "Обновить правила Wi-Fi",
+  ],
+  "恢复 Wi-Fi 规则": [
+    "Restore Wi-Fi rules",
+    "Восстановить правила Wi-Fi",
+  ],
+  "当前没有可添加的 Wi-Fi 信息。": [
+    "There is no current Wi-Fi information to add.",
+    "Нет текущих данных Wi-Fi для добавления.",
+  ],
+  名单模式: ["List mode", "Режим списка"],
   读取热点代理策略: [
     "Read hotspot proxy policy",
     "Прочитать политику прокси точки доступа",
