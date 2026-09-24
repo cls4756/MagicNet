@@ -739,7 +739,7 @@ onMounted(() => {
 
 <style scoped>
 .mn-control {
-  max-width: 720px;
+  width: 100%;
   margin-inline: auto;
 }
 
