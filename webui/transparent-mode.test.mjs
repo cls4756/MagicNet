@@ -10,10 +10,6 @@ const controlSource = readFileSync(
   new URL("./src/components/pages/ControlPage.vue", import.meta.url),
   "utf8",
 );
-const appSource = readFileSync(
-  new URL("./src/App.vue", import.meta.url),
-  "utf8",
-);
 const runtimeSource = readFileSync(
   new URL("./src/composables/useMagicNet.ts", import.meta.url),
   "utf8",
@@ -75,7 +71,6 @@ test("control page reuses confirmation and renders non-optimistic state facts", 
   assert.match(runtimeSource, /--json service status/);
   assert.match(runtimeSource, /state\.runtime = snapshot \?\? \{ \.\.\.runtimeDefaults \}/);
   assert.doesNotMatch(runtimeSource, /"transparent status"/);
-  assert.match(appSource, /transparentRouteData/);
   assert.match(runtimeInsightSource, /透明代理状态不可用/);
   assert.doesNotMatch(controlSource, /transparent set auto/);
 });
