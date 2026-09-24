@@ -414,22 +414,34 @@ a {
   color: var(--mn-success);
 }
 
-.mn-operation-glass {
+.mn-operation-overlay {
   position: fixed;
   z-index: 40;
-  top: 72px;
-  left: 50%;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: var(--mn-overlay);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
+
+.mn-operation-glass {
+  position: relative;
+  z-index: 41;
+  max-width: 680px;
+  width: 100%;
   display: grid;
-  width: min(680px, calc(100vw - 28px));
   gap: 8px;
-  transform: translateX(-50%);
-  border: 1px solid color-mix(in srgb, var(--mn-border-strong) 70%, transparent);
+  border: 1px solid var(--mn-border-strong);
   border-radius: var(--mn-radius-lg);
   padding: 12px 14px;
-  background: color-mix(in srgb, var(--mn-surface-raised) 78%, transparent);
-  box-shadow: 0 18px 50px color-mix(in srgb, var(--mn-ink) 16%, transparent);
-  backdrop-filter: blur(18px) saturate(1.15);
-  -webkit-backdrop-filter: blur(18px) saturate(1.15);
+  background: var(--mn-surface-raised);
+  box-shadow: 0 18px 50px color-mix(in srgb, var(--mn-ink) 24%, transparent);
 }
 
 .mn-operation-heading {
@@ -461,9 +473,9 @@ a {
 .mn-operation-output { max-height: 96px; }
 
 .operation-panel-enter-active,
-.operation-panel-leave-active { transition: opacity 150ms ease, transform 150ms ease; }
+.operation-panel-leave-active { transition: opacity 150ms ease; }
 .operation-panel-enter-from,
-.operation-panel-leave-to { opacity: 0; transform: translate(-50%, -8px); }
+.operation-panel-leave-to { opacity: 0; }
 
 .mn-workspace-frame {
   display: grid;
@@ -1478,7 +1490,9 @@ a {
 @media (prefers-reduced-transparency: reduce) {
   .mn-command-bar,
   .mn-utility-sheet,
-  .mn-easter-egg {
+  .mn-easter-egg,
+  .mn-operation-overlay,
+  .mn-operation-glass {
     background: var(--mn-surface-raised);
     opacity: 1;
   }

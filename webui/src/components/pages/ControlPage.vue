@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { t } from "@/i18n";
 import {
-  DownloadCloud,
   Cpu,
   HelpCircle,
   MemoryStick,
@@ -23,7 +22,6 @@ import CardHeading from "@/components/ui/CardHeading.vue";
 import ConfirmPanel from "@/components/ui/ConfirmPanel.vue";
 import Input from "@/components/ui/Input.vue";
 import StatTile from "@/components/ui/StatTile.vue";
-import StatusDot from "@/components/ui/StatusDot.vue";
 import {
   applyTransparentModeAction,
   type ControlDangerAction,
@@ -36,11 +34,7 @@ import { restoreFocusAfterUpdate, trapFocusWithin } from "@/lib/focus";
 import { statusToneClasses } from "@/lib/statusTone";
 import type { TransparentMode } from "@/types";
 import { execFailed } from "@/utils";
-import {
-  buildControlRuntimeInsight,
-  controlInsightTone,
-  controlRuntimeBusy,
-} from "./controlRuntimeInsight";
+import { controlRuntimeBusy } from "./controlRuntimeInsight";
 import { summarizeHealthChecks } from "./healthCheckSummary";
 
 const {
@@ -112,29 +106,9 @@ const singBoxStatus = computed<SingBoxStatusPresentation>(() => {
     dotClass: "bg-[var(--mn-ink-faint)]",
   };
 });
-const runtimeInsight = computed(() =>
-  buildControlRuntimeInsight({
-    hasKsu: state.hasKsu,
-    phase: state.phase,
-    queueDepth: state.queueDepth,
-    backgroundStatus: state.backgroundTask.status,
-    runtime: state.runtime,
-    output: state.output,
-  }),
-);
 const runtimeBusy = computed(() =>
   controlRuntimeBusy(state.phase, state.queueDepth, state.backgroundTask.status),
 );
-const missingNodeCache = computed(() =>
-  /No cached sing-box nodes found|run cli sub update sing-box/i.test(
-    state.output,
-  ),
-);
-
-const showRuntimeNotice = computed(() => state.hasKsu && (
-  missingNodeCache.value || state.phase === "error" ||
-  (runtimeInsight.value.status !== "ok" && state.runtime.singBoxState !== "stopped")
-));
 
 const controlTitle = computed(() => {
   if (!state.hasKsu) return t("未连接设备");
@@ -252,13 +226,6 @@ function requestTransparentMode(mode: TransparentMode, event: MouseEvent): void 
     setTransparentModeAction(mode, state.runtime.transparentMode),
     event.currentTarget,
   );
-}
-
-async function rebuildNodeCache(): Promise<void> {
-  await withAction("rebuild-node-cache", async () => {
-    // The background follower refreshes subscriptions and service status.
-    await startBackgroundCli("sub update sing-box", t("重建 sing-box 节点缓存"));
-  });
 }
 
 function restoreDangerActionFocus(): void {
@@ -529,19 +496,6 @@ onMounted(() => {
           <span class="mn-control-muted">{{ state.runtime.singBoxState === 'sing-box' && state.runtime.singBoxRssKib == null ? t("暂不可用") : "sing-box" }}</span>
         </article>
       </div>
-
-      <details
-        v-if="showRuntimeNotice"
-        :open="missingNodeCache"
-        class="mn-control-notice"
-        :class="controlInsightTone(runtimeInsight.status)"
-      >
-        <summary><StatusDot tone="current" />{{ runtimeInsight.title }}</summary>
-        <p>{{ runtimeInsight.detail }}</p>
-        <Button v-if="missingNodeCache" variant="outline" :loading="isRunning('rebuild-node-cache')" @click="rebuildNodeCache">
-          <DownloadCloud :size="17" />{{ t("更新订阅并重建节点") }} </Button>
-        <Button v-else variant="outline" @click="emit('goto-tab', 'output')">{{ t("查看输出") }}</Button>
-      </details>
     </section>
 
     <div class="mn-control-settings">

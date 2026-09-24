@@ -63,7 +63,7 @@ const asyncPages = Object.fromEntries(
 
 const workspaces: readonly WorkspaceDefinition[] = [
   { key: "dashboard", label: "仪表盘", icon: LayoutDashboard },
-  { key: "nodes", label: "节点", icon: Router },
+  { key: "nodes", label: "节点与路由", icon: Router },
   { key: "subs", label: "订阅", icon: CloudDownload },
   { key: "settings", label: "设置", icon: Settings },
 ];
@@ -537,16 +537,18 @@ onUnmounted(() => {
     </header>
 
     <Transition name="operation-panel">
-      <section v-if="operationPanelVisible" class="mn-operation-glass" :data-phase="state.operationCapture.phase" role="status" aria-live="polite" aria-atomic="true">
-        <div class="mn-operation-heading">
-          <StatusDot :tone="operationPanelActive ? 'current' : state.operationCapture.phase === 'error' ? 'stop' : 'ok'" />
-          <strong>{{ operationPanelActive ? t('正在执行') : state.operationCapture.phase === 'error' ? t('操作失败') : t('操作完成') }}</strong>
-          <span v-if="state.task" class="mn-operation-task">{{ t(state.task) }}</span>
-        </div>
-        <code class="mn-operation-command">$ {{ state.operationCapture.command }}</code>
-        <pre class="mn-operation-output">{{ state.operationCapture.output }}</pre>
-        <Button v-if="state.backgroundTask.log" variant="ghost" size="sm" @click="gotoTab('output')">{{ t('查看输出') }}</Button>
-      </section>
+      <div v-if="operationPanelVisible" class="mn-operation-overlay">
+        <section class="mn-operation-glass" :data-phase="state.operationCapture.phase" role="status" aria-live="polite" aria-atomic="true">
+          <div class="mn-operation-heading">
+            <StatusDot :tone="operationPanelActive ? 'current' : state.operationCapture.phase === 'error' ? 'stop' : 'ok'" />
+            <strong>{{ operationPanelActive ? t('正在执行') : state.operationCapture.phase === 'error' ? t('操作失败') : t('操作完成') }}</strong>
+            <span v-if="state.task" class="mn-operation-task">{{ t(state.task) }}</span>
+          </div>
+          <code class="mn-operation-command">$ {{ state.operationCapture.command }}</code>
+          <pre class="mn-operation-output">{{ state.operationCapture.output }}</pre>
+          <Button v-if="state.backgroundTask.log" variant="ghost" size="sm" @click="gotoTab('output')">{{ t('查看输出') }}</Button>
+        </section>
+      </div>
     </Transition>
 
     <div class="mn-workspace-frame">
