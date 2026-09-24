@@ -19,6 +19,32 @@ export type ProxyGroupsSnapshot = {
   nodes: ProxyNodeSummary[];
 };
 
+const PRIMARY_GROUP_ORDER = new Map([
+  ["proxy", 0],
+  ["proxy-auto", 1],
+  ["final", 2],
+]);
+
+const INTERNAL_GROUP_NAMES = new Set([
+  "select", "lan", "hotspot", "ad-block", "ad-allow", "cn-direct", "chain", "chain-hop1",
+  "chain-exit", "chain-auto", "apple-cn", "microsoft-cn", "google-cn", "icloud", "bing",
+  "dns-guard", "network-test", "ai-proxy", "ai-chatgpt", "ai-chatgpt-auto", "ai-gemini",
+  "ai-gemini-auto", "ai-grok", "ai-grok-auto", "ai-claude", "ai-claude-auto", "proxy-rule",
+  "dev-proxy", "social-proxy", "media-proxy", "game-proxy", "telegram-proxy", "google-proxy",
+  "youtube-proxy", "github-proxy", "discord-proxy", "netflix-proxy", "spotify-proxy",
+  "twitter-proxy", "whatsapp-proxy", "download-direct",
+]);
+
+export function userVisibleProxyGroups(groups: ProxyGroupSummary[]): ProxyGroupSummary[] {
+  return groups
+    .filter((group) => PRIMARY_GROUP_ORDER.has(group.name) || group.kind === "provider" || !INTERNAL_GROUP_NAMES.has(group.name))
+    .sort((left, right) => {
+      const leftOrder = PRIMARY_GROUP_ORDER.get(left.name) ?? Number.MAX_SAFE_INTEGER;
+      const rightOrder = PRIMARY_GROUP_ORDER.get(right.name) ?? Number.MAX_SAFE_INTEGER;
+      return leftOrder - rightOrder || left.name.localeCompare(right.name);
+    });
+}
+
 export function parseProxyGroupsSnapshot(text: string): ProxyGroupsSnapshot | null {
   try {
     const root = objectValue(JSON.parse(text));

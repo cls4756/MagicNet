@@ -8,7 +8,7 @@ import ConfirmPanel from "@/components/ui/ConfirmPanel.vue";
 import InsightChip from "@/components/ui/InsightChip.vue";
 import SearchField from "@/components/ui/SearchField.vue";
 import { buildNodeDelayStats, nodeDelayQualityLabel, parseNodeTestAll, sanitizeNodeText, type NodeDelayEntry } from "@/composables/nodeDelayParsers";
-import { parseProxyGroupsSnapshot, sanitizeProxyName, type ProxyGroupSummary } from "@/composables/proxyGroupParsers";
+import { parseProxyGroupsSnapshot, sanitizeProxyName, userVisibleProxyGroups, type ProxyGroupSummary } from "@/composables/proxyGroupParsers";
 import { useActionLock } from "@/composables/useActionLock";
 import { useMagicNet } from "@/composables/useMagicNet";
 import { useVisibilityTask } from "@/composables/useVisibilityTask";
@@ -26,6 +26,7 @@ const { isRunning, withAction } = useActionLock();
 const rawOutput = ref("");
 const copied = ref(false);
 const groupQuery = ref("");
+const activeGroupName = ref("");
 const groupDelays = ref<Record<string, NodeDelayEntry[]>>({});
 const expandedGroups = ref<Set<string>>(new Set());
 const pendingAction = ref<PendingProxyAction | null>(null);
@@ -61,6 +62,15 @@ function memberKindLabel(node: string): string {
   if (["direct", "block", "dns", "tun"].includes(node.trim().toLowerCase())) return t("内置");
   return groupNames.value.has(node) ? t("组") : t("节点");
 }
+
+const userVisibleGroups = computed(() => userVisibleProxyGroups(visibleGroups.value));
+const activeGroup = computed(() => userVisibleGroups.value.find((group) => group.name === activeGroupName.value) || userVisibleGroups.value[0] || null);
+
+watch(userVisibleGroups, (groups) => {
+  if (!groups.some((group) => group.name === activeGroupName.value)) {
+    activeGroupName.value = groups[0]?.name || "";
+  }
+}, { immediate: true });
 
 async function refreshGroups(): Promise<void> {
   await withAction("proxy-groups-refresh", async () => {
@@ -170,7 +180,7 @@ async function copySelectionPlan(): Promise<void> {
 }
 
 async function copyReport(): Promise<void> {
-  const report = visibleGroups.value.flatMap((group) => {
+  const report = userVisibleGroups.value.flatMap((group) => {
     const stats = groupDelayStats(group);
     const delays = groupDelays.value[group.name] || [];
     return [
@@ -205,7 +215,7 @@ watch(() => state.subscriptions.lastSuccessEpoch, (value, previous) => {
         <div class="flex gap-2">
           <Button size="sm" variant="outline" :loading="isRunning('proxy-groups-refresh')" @click="refreshGroups">
             <RefreshCw :size="15" />{{ t("刷新") }} </Button>
-          <Button size="sm" variant="secondary" :disabled="!visibleGroups.length" @click="copyReport">
+          <Button size="sm" variant="secondary" :disabled="!userVisibleGroups.length" @click="copyReport">
             <Copy :size="15" />{{ copied ? t("已复制") : t("复制") }}
           </Button>
         </div>
@@ -214,7 +224,7 @@ watch(() => state.subscriptions.lastSuccessEpoch, (value, previous) => {
     <div class="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
       <SearchField v-model="groupQuery" :placeholder="t('搜索代理组或节点')" />
       <span class="text-sm text-[var(--mn-ink-muted)]">
-        {{ t("{visible} 组", { visible: visibleGroups.length }) }} </span>
+        {{ t("{visible} 组", { visible: userVisibleGroups.length }) }} </span>
     </div>
 
     <ConfirmPanel
@@ -247,57 +257,72 @@ watch(() => state.subscriptions.lastSuccessEpoch, (value, previous) => {
       </template>
     </ConfirmPanel>
 
-    <div v-if="visibleGroups.length" class="proxy-group-grid">
-      <article v-for="group in visibleGroups" :key="group.name" class="proxy-group-card">
+    <div v-if="userVisibleGroups.length" class="proxy-group-tabs" role="tablist" :aria-label="t('策略组')">
+      <button
+        v-for="group in userVisibleGroups"
+        :key="group.name"
+        class="proxy-group-tab"
+        :class="activeGroup?.name === group.name ? 'is-active' : ''"
+        type="button"
+        role="tab"
+        :aria-selected="activeGroup?.name === group.name"
+        aria-controls="proxy-group-panel"
+        @click="activeGroupName = group.name"
+      >
+        <span class="truncate">{{ sanitizeProxyName(group.name) }}</span>
+        <span class="proxy-group-tab-kind">{{ group.kind === "auto" ? t("自动") : group.now ? sanitizeProxyName(group.now) : groupKindLabel(group) }}</span>
+      </button>
+    </div>
+
+    <article v-if="activeGroup" id="proxy-group-panel" class="proxy-group-card" role="tabpanel">
           <div class="proxy-group-card-header">
             <div class="min-w-0">
-            <p class="proxy-group-title"><span class="proxy-group-symbol">{{ group.kind === "auto" ? "♻" : group.kind === "provider" ? "▣" : "☑" }}</span>{{ sanitizeProxyName(group.name) }}</p>
-            <p class="proxy-group-type">{{ groupKindLabel(group) }} · {{ sanitizeProxyName(group.type) }}</p>
+            <p class="proxy-group-title"><span class="proxy-group-symbol">{{ activeGroup.kind === "auto" ? "♻" : activeGroup.kind === "provider" ? "▣" : "☑" }}</span>{{ sanitizeProxyName(activeGroup.name) }}</p>
+            <p class="proxy-group-type">{{ groupKindLabel(activeGroup) }} · {{ sanitizeProxyName(activeGroup.type) }}</p>
           </div>
-          <span class="proxy-group-current">{{ sanitizeProxyName(group.now || (group.selectable ? t("未选择") : t("自动选择"))) }}</span>
+          <span class="proxy-group-current">{{ sanitizeProxyName(activeGroup.now || (activeGroup.selectable ? t("未选择") : t("自动选择中"))) }}</span>
         </div>
         <div class="proxy-group-card-meta">
           <p>
-            <template v-if="groupDelayStats(group).tested"> {{ t("已测 {tested} · 可用 {usable} · 最快 {fastest}", { tested: groupDelayStats(group).tested, usable: groupDelayStats(group).usable, fastest: groupDelayStats(group).fastest?.summary || t("无") }) }}
-            </template>
-            <template v-else>{{ group.kind === "auto" ? t("由 sing-box 自动测速，不需要手动切换。") : t("可测速本组前 16 个节点。") }}</template>
+            <template v-if="activeGroup.kind === 'auto'">{{ t("由 sing-box 自动测速并选择出口；此组不能手动切换。") }}</template>
+            <template v-else-if="groupDelayStats(activeGroup).tested">{{ t("已测 {tested} · 可用 {usable} · 最快 {fastest}", { tested: groupDelayStats(activeGroup).tested, usable: groupDelayStats(activeGroup).usable, fastest: groupDelayStats(activeGroup).fastest?.summary || t("无") }) }}</template>
+            <template v-else>{{ activeGroup.selectable ? t("可测速本组前 16 个节点。") : t("此组由订阅提供，仅展示当前成员。") }}</template>
           </p>
-          <Button size="sm" variant="outline" :disabled="group.kind !== 'selector'" :loading="isRunning(`proxy-group-test-${group.name}`)" @click="testGroup(group)">{{ t("测速") }}</Button>
-          <Button size="sm" variant="secondary" :disabled="!group.selectable || !groupDelayStats(group).fastest" @click="requestUseFastest(group)">{{ t("最快") }}</Button>
+          <Button v-if="activeGroup.selectable" size="sm" variant="outline" :loading="isRunning(`proxy-group-test-${activeGroup.name}`)" @click="testGroup(activeGroup)">{{ t("测速") }}</Button>
+          <Button v-if="activeGroup.selectable" size="sm" variant="secondary" :disabled="!groupDelayStats(activeGroup).fastest" @click="requestUseFastest(activeGroup)">{{ t("最快") }}</Button>
         </div>
         <div class="proxy-member-grid">
           <button
-            v-for="node in visibleGroupNodes(group)"
-            :key="`${group.name}-${node}`"
+            v-for="node in visibleGroupNodes(activeGroup)"
+            :key="`${activeGroup.name}-${node}`"
             class="proxy-member-card"
-            :aria-pressed="node === group.now"
-            :class="node === group.now ? 'mn-tone-ok' : 'border-[var(--mn-border)] text-[var(--mn-ink-soft)]'"
+            :aria-pressed="node === activeGroup.now"
+            :class="node === activeGroup.now ? 'mn-tone-ok' : 'border-[var(--mn-border)] text-[var(--mn-ink-soft)]'"
             type="button"
-            :disabled="!group.selectable || node === group.now || isRunning('proxy-groups-select')"
-            :title="group.selectable ? t('切换到 {value}', { value: sanitizeProxyName(node) }) : t('自动测速组由 sing-box 自动选择')"
-            @click="requestSelect(group, node)"
+            :disabled="!activeGroup.selectable || node === activeGroup.now || isRunning('proxy-groups-select')"
+            :title="activeGroup.selectable ? t('切换到 {value}', { value: sanitizeProxyName(node) }) : t('自动测速组由 sing-box 自动选择')"
+            @click="requestSelect(activeGroup, node)"
           >
             <span class="truncate">{{ sanitizeProxyName(node) }}</span>
             <span class="mt-1 text-xs text-[var(--mn-ink-faint)]">{{ memberKindLabel(node) }}</span>
-            <span v-if="groupDelays[group.name]?.find((entry) => entry.node === node)" class="mt-1 text-xs text-[var(--mn-ink-muted)]">
-              {{ sanitizeNodeText(groupDelays[group.name].find((entry) => entry.node === node)?.summary || "") }}
-              · {{ nodeDelayQualityLabel(groupDelays[group.name].find((entry) => entry.node === node)?.quality || "failed") }}
+            <span v-if="groupDelays[activeGroup.name]?.find((entry) => entry.node === node)" class="mt-1 text-xs text-[var(--mn-ink-muted)]">
+              {{ sanitizeNodeText(groupDelays[activeGroup.name].find((entry) => entry.node === node)?.summary || "") }}
+              · {{ nodeDelayQualityLabel(groupDelays[activeGroup.name].find((entry) => entry.node === node)?.quality || "failed") }}
             </span>
           </button>
         </div>
         <Button
-          v-if="group.proxies.length > 9 && !groupQuery.trim()"
+          v-if="activeGroup.proxies.length > 9 && !groupQuery.trim()"
           class="mt-2"
           size="sm"
           variant="ghost"
-          :aria-expanded="expandedGroups.has(group.name)"
-          @click="toggleGroupExpanded(group)"
+          :aria-expanded="expandedGroups.has(activeGroup.name)"
+          @click="toggleGroupExpanded(activeGroup)"
         >
-          <ChevronDown :size="15" :class="expandedGroups.has(group.name) ? 'rotate-180' : ''" />
-          {{ expandedGroups.has(group.name) ? t("收起节点") : t("查看全部 {count} 个节点", { count: group.proxies.length }) }}
+          <ChevronDown :size="15" :class="expandedGroups.has(activeGroup.name) ? 'rotate-180' : ''" />
+          {{ expandedGroups.has(activeGroup.name) ? t("收起节点") : t("查看全部 {count} 个节点", { count: activeGroup.proxies.length }) }}
         </Button>
-      </article>
-    </div>
+    </article>
     <pre v-else-if="rawOutput" class="max-h-48 overflow-auto rounded-md bg-[var(--mn-carrier-deep)] p-3 text-xs leading-6 text-[var(--mn-ink-soft)] whitespace-pre-wrap">{{ rawOutput }}</pre>
     <p v-else class="mn-empty">{{ t("正在读取当前策略组与节点；如果 sing-box 未运行，请先更新订阅并启动服务。") }}</p>
     </Card>
@@ -305,8 +330,11 @@ watch(() => state.subscriptions.lastSuccessEpoch, (value, previous) => {
 </template>
 
 <style scoped>
-.proxy-group-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
-.proxy-group-card { display: grid; gap: 12px; min-width: 0; border: 1px solid var(--mn-border); border-radius: 18px; padding: 14px; background: var(--mn-ivory); }
+.proxy-group-tabs { display: flex; gap: 6px; overflow-x: auto; border-bottom: 1px solid var(--mn-border); padding-bottom: 6px; }
+.proxy-group-tab { display: grid; flex: 0 0 auto; gap: 2px; min-width: 96px; max-width: 220px; border: 1px solid transparent; border-radius: 9px; padding: 7px 10px; color: var(--mn-ink-soft); background: transparent; text-align: left; font-size: .8125rem; }
+.proxy-group-tab.is-active { border-color: var(--mn-border); color: var(--mn-ink); background: var(--mn-surface-sunken); }
+.proxy-group-tab-kind { overflow: hidden; color: var(--mn-ink-faint); font-size: .6875rem; text-overflow: ellipsis; white-space: nowrap; }
+.proxy-group-card { display: grid; gap: 12px; min-width: 0; border: 1px solid var(--mn-border); border-radius: 12px; padding: 12px; background: var(--mn-ivory); }
 .proxy-group-card-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; min-width: 0; }
 .proxy-group-title { display: flex; align-items: center; gap: 8px; min-width: 0; margin: 0; color: var(--mn-ink); font-size: 1rem; font-weight: 650; overflow-wrap: anywhere; }
 .proxy-group-symbol { display: inline-grid; place-items: center; flex: 0 0 auto; width: 25px; height: 25px; border-radius: 7px; color: var(--mn-clay-ink); background: var(--mn-coral); font-size: 1rem; }
@@ -320,7 +348,6 @@ watch(() => state.subscriptions.lastSuccessEpoch, (value, previous) => {
 .proxy-member-card[aria-pressed="true"] { border-color: var(--mn-success); background: var(--mn-tone-ok-bg); }
 .proxy-member-card > span:nth-child(2) { color: var(--mn-ink-faint); font-size: .6875rem; }
 @media (max-width: 640px) {
-  .proxy-group-grid { grid-template-columns: minmax(0, 1fr); }
   .proxy-group-card-meta { grid-template-columns: minmax(0, 1fr) auto; }
   .proxy-group-card-meta p { grid-column: 1 / -1; }
   .proxy-member-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }

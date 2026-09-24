@@ -56,6 +56,7 @@ network.status
 domain-forward.status
 sub.status
 wifi.status
+routing.inspect
 machine.capabilities
 ```
 
@@ -69,7 +70,16 @@ Examples:
 /data/adb/modules/MagicNet/cli --json domain-forward status
 /data/adb/modules/MagicNet/cli --json sub status
 /data/adb/modules/MagicNet/cli --json wifi status
+/data/adb/modules/MagicNet/cli --json routing inspect
 ```
+
+`routing.inspect` is a read-only, redacted view of the effective sing-box
+routing rules and outbound graph. It preserves rule order, reports whether a
+rule is a MagicNet-managed custom-domain rule, and separates configured
+defaults from observed runtime selections. It does not return node credentials,
+subscription URLs, or raw configuration secrets. The WebUI only offers add,
+edit, and delete for MagicNet-managed domain suffix records; provider-owned and
+other feature-owned rules remain read-only in this view.
 
 ## Readiness semantics
 

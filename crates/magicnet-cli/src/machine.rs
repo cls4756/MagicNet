@@ -10,6 +10,7 @@ use crate::{
 
 mod subscription;
 mod transparent;
+mod routing;
 
 const MACHINE_SCHEMA: u64 = 1;
 const SELECTED_CORE_CONF: &str = ".config/magicnet/current-core.conf";
@@ -40,6 +41,7 @@ const MACHINE_COMMANDS: &[&str] = &[
     "sub.inspect",
     "wifi.status",
     "wifi.inspect",
+    "routing.inspect",
     "machine.capabilities",
 ];
 
@@ -109,6 +111,9 @@ fn machine_value(app: &App, command: &[&str]) -> Result<Value, MachineError> {
         [command, action] if *command == "wifi" && *action == "status" => {
             Ok(wifi_status_value(app))
         }
+        [command, action] if *command == "routing" && *action == "inspect" => {
+            routing::inspect(app)
+        }
         _ => Err(MachineError {
             code: "machine.unsupported_command",
             message: "unsupported machine command",
@@ -159,7 +164,7 @@ fn capabilities_value() -> Value {
                 "privacy_safe_network_identifiers",
                 "readiness_signals"
             ],
-            "private_commands": ["sub.inspect", "wifi.inspect"],
+            "private_commands": ["sub.inspect", "wifi.inspect", "routing.inspect"],
             "json_flag_positions": ["prefix", "suffix"],
             "read_only": true,
         }),
@@ -827,7 +832,7 @@ mod tests {
         assert_eq!(value["data"]["read_only"], true);
         assert_eq!(
             value["data"]["private_commands"],
-            serde_json::json!(["sub.inspect", "wifi.inspect"])
+            serde_json::json!(["sub.inspect", "wifi.inspect", "routing.inspect"])
         );
         let commands = value["data"]["commands"]
             .as_array()
@@ -844,6 +849,9 @@ mod tests {
         assert!(commands
             .iter()
             .any(|command| command.as_str() == Some("wifi.status")));
+        assert!(commands
+            .iter()
+            .any(|command| command.as_str() == Some("routing.inspect")));
     }
 
     #[test]

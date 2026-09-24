@@ -54,3 +54,18 @@ test("invalid snapshot roots are rejected while an empty proxies map is valid", 
   }
   assert.deepEqual(parseProxyGroupsSnapshot('{"proxies":{}}'), { groups: [], nodes: [] });
 });
+
+import { userVisibleProxyGroups } from "./src/composables/proxyGroupParsers.ts";
+
+test("user-facing proxy groups keep primary tabs first and hide internal implementation groups", () => {
+  const groups = [
+    { name: "ai-proxy", type: "selector", now: "proxy", proxies: ["proxy"], kind: "selector", selectable: true },
+    { name: "provider-selector", type: "selector", now: "node-a", proxies: ["node-a"], kind: "provider", selectable: false },
+    { name: "final", type: "selector", now: "proxy", proxies: ["proxy"], kind: "selector", selectable: true },
+    { name: "proxy-auto", type: "urltest", now: "node-a", proxies: ["node-a"], kind: "auto", selectable: false },
+    { name: "proxy", type: "selector", now: "node-a", proxies: ["node-a"], kind: "selector", selectable: true },
+  ];
+  assert.deepEqual(userVisibleProxyGroups(groups).map((group) => group.name), [
+    "proxy", "proxy-auto", "final", "provider-selector",
+  ]);
+});
