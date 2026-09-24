@@ -156,7 +156,7 @@ const controlTitleClass = computed(() => {
 });
 
 const healthSummary = computed(() => summarizeHealthChecks(state.health));
-const healthLabels: Record<string, string> = { fail: "失败", warn: "警告", info: "提示", ok: "正常" };
+const healthLabels: Record<string, string> = { fail: "失败", warn: "注意", info: "提示", ok: "正常" };
 
 const healthStatusTone: Record<string, "ok" | "warning" | "danger" | "neutral"> = {
   ok: "ok",
