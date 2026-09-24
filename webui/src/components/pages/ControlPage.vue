@@ -9,8 +9,10 @@ import {
   Plus,
   Power,
   Radar,
+  RefreshCw,
   RotateCcw,
   Share2,
+  ShieldCheck,
   Wifi,
 } from "lucide-vue-next";
 import { computed, nextTick, onDeactivated, onMounted, ref, watch } from "vue";
@@ -31,6 +33,7 @@ import {
 import { useActionLock } from "@/composables/useActionLock";
 import { useMagicNet } from "@/composables/useMagicNet";
 import { restoreFocusAfterUpdate, trapFocusWithin } from "@/lib/focus";
+import { statusToneClasses } from "@/lib/statusTone";
 import type { TransparentMode } from "@/types";
 import { execFailed } from "@/utils";
 import {
@@ -38,6 +41,7 @@ import {
   controlInsightTone,
   controlRuntimeBusy,
 } from "./controlRuntimeInsight";
+import { summarizeHealthChecks } from "./healthCheckSummary";
 
 const {
   state,
@@ -45,6 +49,7 @@ const {
   startBackgroundCli,
   refreshAll,
   refreshStatus,
+  refreshHealth,
   refreshWifiPolicy,
   shellQuote,
 } = useMagicNet();
@@ -149,6 +154,20 @@ const controlTitleClass = computed(() => {
   if (state.runtime.singBoxState === "stopped") return "text-[var(--mn-danger)] font-semibold";
   return "text-[var(--mn-ink-muted)] font-medium";
 });
+
+const healthSummary = computed(() => summarizeHealthChecks(state.health));
+const healthLabels: Record<string, string> = { fail: "失败", warn: "警告", info: "提示", ok: "正常" };
+
+const healthStatusTone: Record<string, "ok" | "warning" | "danger" | "neutral"> = {
+  ok: "ok",
+  warning: "warning",
+  danger: "danger",
+  idle: "neutral",
+};
+
+async function runHealthCheck(): Promise<void> {
+  await withAction("health", () => refreshHealth(true));
+}
 
 const transparentModeLabel = computed(() => {
   if (state.runtime.transparentMode === "tun") return "TUN";
@@ -526,6 +545,37 @@ onMounted(() => {
     </section>
 
     <div class="mn-control-settings">
+      <Card class="grid gap-4" role="status">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <h3 class="inline-flex items-center gap-2 text-base font-medium">
+            <ShieldCheck :size="17" />{{ t("健康检查") }}
+          </h3>
+          <Button size="sm" variant="outline" :loading="isRunning('health')" @click="runHealthCheck">
+            <RefreshCw :size="15" />{{ t("刷新") }}
+          </Button>
+        </div>
+        <div class="rounded-md p-4" :class="statusToneClasses(healthStatusTone[healthSummary.level])">
+          <p class="font-medium">{{ healthSummary.label }}</p>
+          <p v-if="healthSummary.counts.ok + healthSummary.counts.warn + healthSummary.counts.fail + healthSummary.counts.info > 0" class="mt-2 text-sm leading-6">{{ healthSummary.detail }}</p>
+        </div>
+        <div class="grid grid-cols-4 gap-3">
+          <div v-for="status in ['fail', 'warn', 'info', 'ok']" :key="status">
+            <p class="text-xs text-[var(--mn-ink-muted)]">{{ t(healthLabels[status]) }}</p>
+            <p class="mt-2 text-2xl font-medium tabular-nums">{{ healthSummary.counts[status] }}</p>
+          </div>
+        </div>
+        <div v-if="state.health.length && healthSummary.attention.length" class="flex items-center justify-between pt-2">
+          <div class="flex flex-wrap gap-2">
+            <span v-for="item in healthSummary.attention" :key="item.key" class="text-xs">
+              {{ item.key }}
+            </span>
+          </div>
+          <Button size="sm" variant="outline" @click="emit('goto-tab', 'health')">
+            {{ t("查看详细") }}
+          </Button>
+        </div>
+      </Card>
+
       <Card class="grid gap-5">
         <CardHeading :title="t('代理模式')">
           <Badge v-if="state.runtime.transparentMode === 'unknown'" tone="neutral">{{ t("未确认") }}</Badge>
