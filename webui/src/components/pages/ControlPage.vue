@@ -3,7 +3,6 @@ import { t } from "@/i18n";
 import {
   DownloadCloud,
   Cpu,
-  ExternalLink,
   HelpCircle,
   MemoryStick,
   Pencil,
@@ -26,7 +25,6 @@ import StatusDot from "@/components/ui/StatusDot.vue";
 import {
   applyTransparentModeAction,
   type ControlDangerAction,
-  restartSingBoxAction,
   setTransparentModeAction,
   singBoxToggleAction,
 } from "@/components/pages/controlDangerActions";
@@ -48,7 +46,6 @@ const {
   refreshAll,
   refreshStatus,
   refreshWifiPolicy,
-  openSingBoxUi,
   shellQuote,
 } = useMagicNet();
 const { isRunning, withAction } = useActionLock();
@@ -140,6 +137,17 @@ const controlTitle = computed(() => {
     return state.runtime.serviceReady === false ? t("服务未就绪") : t("运行中");
   if (state.runtime.singBoxState === "stopped") return t("已停止");
   return t("状态未知");
+});
+
+const controlTitleClass = computed(() => {
+  if (!state.hasKsu) return "text-[var(--mn-ink-muted)] font-medium";
+  if (state.runtime.singBoxState === "sing-box") {
+    return state.runtime.serviceReady === false
+      ? "text-[var(--mn-warning)] font-medium"
+      : "text-[var(--mn-success)] font-semibold";
+  }
+  if (state.runtime.singBoxState === "stopped") return "text-[var(--mn-danger)] font-semibold";
+  return "text-[var(--mn-ink-muted)] font-medium";
 });
 
 const transparentModeLabel = computed(() => {
@@ -477,7 +485,7 @@ onMounted(() => {
           <div class="mn-control-service-row">
             <div class="mn-control-service-value">
               <span v-if="state.hasKsu" :class="['mn-control-dot', singBoxStatus.dotClass]" aria-hidden="true" />
-              <strong>{{ controlTitle }}</strong>
+              <strong :class="controlTitleClass">{{ controlTitle }}</strong>
               <span class="mn-control-muted">{{ state.hasKsu ? `sing-box · ${transparentModeLabel}` : t("请在模块管理器中打开") }}</span>
             </div>
             <Button class="mn-control-service-action" variant="outline" :disabled="runtimeBusy || !state.hasKsu"
@@ -501,12 +509,6 @@ onMounted(() => {
           </strong>
           <span class="mn-control-muted">{{ state.runtime.singBoxState === 'sing-box' && state.runtime.singBoxRssKib == null ? t("暂不可用") : "sing-box" }}</span>
         </article>
-      </div>
-      <div class="mn-control-shortcuts">
-        <Button variant="ghost" :disabled="!state.hasKsu" :loading="isRunning('open-zashboard')" @click="withAction('open-zashboard', () => openSingBoxUi('zashboard'))">
-          <ExternalLink :size="16" />{{ t("节点面板") }} </Button>
-        <Button variant="ghost" :disabled="runtimeBusy || !state.hasKsu" :loading="isRunning('restart-sing-box')" @click="requestDangerAction(restartSingBoxAction(), $event.currentTarget)">
-          <RotateCcw :size="16" />{{ t("重启服务") }} </Button>
       </div>
 
       <details
@@ -621,16 +623,18 @@ onMounted(() => {
             @change="toggleHotspotProxy"
           />
           <span class="min-w-0">
-            <span class="mn-hotspot-label"><Share2 :size="17" />{{ t("热点代理") }}</span>
+            <span class="mn-hotspot-label">
+              <Share2 :size="17" />{{ t("热点代理") }}
+              <Button variant="ghost" size="icon" class="mn-hotspot-help" :aria-label="t('热点代理帮助')" :aria-expanded="showHotspotHelp" @click="showHotspotHelp = !showHotspotHelp">
+                <HelpCircle :size="17" aria-hidden="true" />
+              </Button>
+            </span>
             <span id="hotspot-proxy-status" class="mn-hotspot-state">
               {{ !state.hasKsu ? t("未连接设备") : hotspotPolicyPhase === 'loading' ? t("读取中") : hotspotPolicyPhase === 'error' ? t("读取失败") : hotspotProxyEnabled ? hotspotForwardingLabel : t("已关闭") }}
             </span>
           </span>
           <span class="mn-hotspot-track" aria-hidden="true" />
           </label>
-          <Button variant="ghost" size="icon" :aria-label="t('热点代理帮助')" :aria-expanded="showHotspotHelp" @click="showHotspotHelp = !showHotspotHelp">
-            <HelpCircle :size="17" aria-hidden="true" />
-          </Button>
         </div>
         <div v-if="showHotspotHelp" id="hotspot-proxy-description" class="mn-help-popover" role="dialog">
           <p>{{ t("热点设备使用 proxy 代理组；不勾选时统一走 direct。TUN 模式会关闭 Android 热点硬件加速，关闭代理后恢复原设置；eBPF 模式使用共享 TC。") }}</p>
@@ -806,26 +810,6 @@ onMounted(() => {
   min-height: 34px;
   padding-inline: 10px;
   font-size: 12px;
-}
-
-.mn-control-shortcuts {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 4px;
-  margin-top: 5px;
-}
-
-.mn-control-shortcuts > :first-child {
-  position: relative;
-}
-
-.mn-control-shortcuts > :first-child::after {
-  position: absolute;
-  right: -7px;
-  width: 1px;
-  height: 16px;
-  background: var(--mn-border);
-  content: "";
 }
 
 .mn-control-settings {
@@ -1008,6 +992,16 @@ onMounted(() => {
   gap: 8px;
   font-size: 16px;
   font-weight: 500;
+}
+
+.mn-hotspot-help {
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  min-width: 28px;
+  min-height: 28px;
+  padding: 0;
+  border-radius: 6px;
 }
 
 .mn-hotspot-state {
