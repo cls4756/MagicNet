@@ -205,7 +205,7 @@ fn normalize_profile(profile: &str) -> Result<&'static str, String> {
         // Cloudflare profiles - preserve -direct suffix
         "cloudflare" | "cloudflare-doh" | "1.1.1.1-doh" | "doh" => Ok("cloudflare-doh"),
         "cloudflare-doh-direct" => Ok("cloudflare-doh-direct"),
-        "cloudflare" | "cloudflare-dot" | "1.1.1.1-dot" | "dot" => Ok("cloudflare-dot"),
+        "cloudflare-dot" | "1.1.1.1-dot" | "dot" => Ok("cloudflare-dot"),
         "cloudflare-dot-direct" => Ok("cloudflare-dot-direct"),
         "cloudflare-udp" | "1.1.1.1" | "udp" => Ok("cloudflare-udp"),
         "cloudflare-udp-direct" => Ok("cloudflare-udp-direct"),

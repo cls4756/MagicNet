@@ -683,7 +683,7 @@ fn dns_profile(app: &App) -> String {
         // Cloudflare profiles
         "cloudflare" | "cloudflare-doh" | "1.1.1.1-doh" | "doh" => "cloudflare-doh",
         "cloudflare-doh-direct" => "cloudflare-doh-direct",
-        "cloudflare" | "cloudflare-dot" | "1.1.1.1-dot" | "dot" => "cloudflare-dot",
+        "cloudflare-dot" | "1.1.1.1-dot" | "dot" => "cloudflare-dot",
         "cloudflare-dot-direct" => "cloudflare-dot-direct",
         "cloudflare-udp" | "1.1.1.1" | "udp" => "cloudflare-udp",
         "cloudflare-udp-direct" => "cloudflare-udp-direct",
