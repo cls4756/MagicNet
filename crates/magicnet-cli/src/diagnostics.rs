@@ -1156,13 +1156,8 @@ fn ebpf_dataplane_check(app: &App, source: TransparentModeSource) -> (bool, Stri
         .then(|| {
             run_magicnet_function(app, "magicnet_ebpf_refresh_active_report")
                 .map_err(|_| "refresh-failed".to_string())?;
-            let text = fs::read_to_string(app.moddir.join(".state/transparent-ebpf/probe.json"))
-                .map_err(|_| "report-unreadable".to_string())?;
-            let report =
-                serde_json::from_str::<Value>(&text).map_err(|_| "report-invalid".to_string())?;
             Ok::<_, String>(inspect_ebpf_attachments(
                 app,
-                &report,
                 local_effective,
                 cgroup_path,
                 &effective.network,

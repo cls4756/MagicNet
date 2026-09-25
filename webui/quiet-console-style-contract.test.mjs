@@ -29,6 +29,11 @@ void test("mobile paper uses quiet surfaces and restrained action emphasis", () 
 
 void test("shell is outcome-led rather than terminal-themed", () => {
   assert.match(app, /class="mn-operation-glass"/);
+  assert.match(app, /role="dialog"/);
+  assert.match(app, /aria-modal="true"/);
+  assert.match(app, /:inert="operationPanelActive"/);
+  assert.match(styles, /\.mn-operation-overlay\s*\{[\s\S]*z-index:\s*1000/);
+  assert.match(styles, /background:\s*rgb\(20 28 40 \/ 72%\)/);
   assert.doesNotMatch(app, /activeWorkspace\.description|>网络控制</);
   assert.match(app, /:aria-label="t\('全部页面'\)"/);
   assert.doesNotMatch(app, /mobileLabel:/);

@@ -416,18 +416,25 @@ a {
 
 .mn-operation-overlay {
   position: fixed;
-  z-index: 40;
+  z-index: 1000;
   top: 0;
   right: 0;
   bottom: 0;
   left: 0;
+  isolation: isolate;
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 24px;
-  background: var(--mn-overlay);
+  background: rgb(20 28 40 / 72%);
   backdrop-filter: blur(4px);
   -webkit-backdrop-filter: blur(4px);
+  overscroll-behavior: contain;
+  touch-action: none;
+}
+
+html[data-theme="dark"] .mn-operation-overlay {
+  background: rgb(0 0 0 / 78%);
 }
 
 .mn-operation-glass {
@@ -441,6 +448,7 @@ a {
   border-radius: var(--mn-radius-lg);
   padding: 12px 14px;
   background: var(--mn-surface-raised);
+  opacity: 1;
   box-shadow: 0 18px 50px color-mix(in srgb, var(--mn-ink) 24%, transparent);
 }
 

@@ -63,7 +63,7 @@ const asyncPages = Object.fromEntries(
 
 const workspaces: readonly WorkspaceDefinition[] = [
   { key: "dashboard", label: "仪表盘", icon: LayoutDashboard },
-  { key: "nodes", label: "节点与路由", icon: Router },
+  { key: "nodes", label: "节点", icon: Router },
   { key: "subs", label: "订阅", icon: CloudDownload },
   { key: "settings", label: "设置", icon: Settings },
 ];
@@ -251,6 +251,7 @@ const activeComponentProps = computed(() =>
 );
 
 const operationPanelVisible = ref(false);
+const operationDialog = ref<HTMLElement | null>(null);
 let operationPanelTimer: number | undefined;
 const operationPanelActive = computed(() => ["accepted", "queued", "running"].includes(state.operationCapture.phase));
 
@@ -263,6 +264,7 @@ watch(
     }
     if (phase === "accepted" || phase === "queued" || phase === "running") {
       operationPanelVisible.value = true;
+      void nextTick(() => operationDialog.value?.focus());
       return;
     }
     if (phase === "done" || phase === "error") {
@@ -449,7 +451,7 @@ onUnmounted(() => {
 
 <template>
   <div class="mn-shell" :class="{ 'mn-keyboard-open': keyboardOpen }">
-    <header class="mn-command-bar">
+    <header class="mn-command-bar" :inert="operationPanelActive">
       <div class="mn-brand-lockup">
         <button
           class="mn-brand-mark brand-mark"
@@ -538,7 +540,17 @@ onUnmounted(() => {
 
     <Transition name="operation-panel">
       <div v-if="operationPanelVisible" class="mn-operation-overlay">
-        <section class="mn-operation-glass" :data-phase="state.operationCapture.phase" role="status" aria-live="polite" aria-atomic="true">
+        <section
+          ref="operationDialog"
+          class="mn-operation-glass"
+          :data-phase="state.operationCapture.phase"
+          role="dialog"
+          aria-modal="true"
+          aria-live="polite"
+          aria-atomic="true"
+          :aria-label="state.task ? t(state.task) : t('正在执行')"
+          tabindex="-1"
+        >
           <div class="mn-operation-heading">
             <StatusDot :tone="operationPanelActive ? 'current' : state.operationCapture.phase === 'error' ? 'stop' : 'ok'" />
             <strong>{{ operationPanelActive ? t('正在执行') : state.operationCapture.phase === 'error' ? t('操作失败') : t('操作完成') }}</strong>
@@ -551,7 +563,7 @@ onUnmounted(() => {
       </div>
     </Transition>
 
-    <div class="mn-workspace-frame">
+    <div class="mn-workspace-frame" :inert="operationPanelActive">
       <aside class="desktop-rail" :aria-label="t('MagicNet 工作区')">
         <nav :aria-label="t('全部页面')">
           <button

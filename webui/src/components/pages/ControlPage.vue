@@ -352,10 +352,14 @@ async function toggleHotspotProxy(event: Event): Promise<void> {
     checkbox.checked = hotspotProxyEnabled.value;
     return;
   }
+  if (isRunning("hotspot-proxy")) {
+    checkbox.checked = hotspotProxyEnabled.value;
+    return;
+  }
   const previous = hotspotProxyEnabled.value;
   const enabled = checkbox.checked;
-  hotspotProxyEnabled.value = enabled;
   await withAction("hotspot-proxy", async () => {
+    hotspotProxyEnabled.value = enabled;
     const output = await runCli(
       `hotspot ${enabled ? "enable" : "disable"}`,
       enabled ? t("启用热点代理") : t("停用热点代理"),
