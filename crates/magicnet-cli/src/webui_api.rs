@@ -1,7 +1,10 @@
 use std::fs;
 use std::io::{Read, Write};
+use std::os::fd::AsRawFd;
 use std::path::Path;
 use std::process::{Command, Stdio};
+use std::thread;
+use std::time::{Duration, Instant};
 
 use serde_json::json;
 use sha2::{Digest, Sha256};
@@ -16,6 +19,50 @@ use crate::selector_store;
 use crate::service::{apply_config, singbox_webui};
 use crate::subscriptions::{download_pinned_https_url, validate_subscription_url};
 use crate::{run_magicnet_function, write_text_file, App};
+
+const HOTSPOT_ACTION_LOCK: &str = ".state/hotspot/action.lock";
+const HOTSPOT_ACTION_LOCK_TIMEOUT: Duration = Duration::from_secs(45);
+const HOTSPOT_ACTION_LOCK_POLL: Duration = Duration::from_millis(50);
+
+struct HotspotActionGuard(fs::File);
+
+impl Drop for HotspotActionGuard {
+    fn drop(&mut self) {
+        unsafe {
+            libc::flock(self.0.as_raw_fd(), libc::LOCK_UN);
+        }
+    }
+}
+
+fn hotspot_action_lock(app: &App) -> Result<HotspotActionGuard, String> {
+    let path = app.moddir.join(HOTSPOT_ACTION_LOCK);
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)
+            .map_err(|error| format!("create hotspot action lock directory: {error}"))?;
+    }
+    let file = fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .open(&path)
+        .map_err(|error| format!("open hotspot action lock: {error}"))?;
+    let deadline = Instant::now() + HOTSPOT_ACTION_LOCK_TIMEOUT;
+    loop {
+        if unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } == 0 {
+            return Ok(HotspotActionGuard(file));
+        }
+        let error = std::io::Error::last_os_error();
+        if error.kind() != std::io::ErrorKind::WouldBlock {
+            return Err(format!("lock hotspot action: {error}"));
+        }
+        let now = Instant::now();
+        if now >= deadline {
+            return Err("hotspot action is still busy; retry the toggle".to_string());
+        }
+        thread::sleep(HOTSPOT_ACTION_LOCK_POLL.min(deadline.saturating_duration_since(now)));
+    }
+}
 
 pub(crate) fn api_cmd(app: &App, args: &[String]) -> Result<(), String> {
     match args.first().map(String::as_str).unwrap_or_default() {
@@ -161,10 +208,49 @@ fn refresh_hotspot_policy_if_stale(app: &App) -> Result<(), String> {
     }
 }
 
-fn rollback_hotspot_enable(app: &App) {
-    let _ = select_proxy(app, "hotspot", "direct");
-    let _ = run_magicnet_function(app, "magicnet_hotspot_offload_restore");
-    let _ = run_magicnet_function(app, "magicnet_hotspot_route_cleanup");
+fn rollback_hotspot_enable(app: &App) -> Result<(), String> {
+    let mut errors = Vec::new();
+    if let Err(error) = select_proxy(app, "hotspot", "direct") {
+        errors.push(format!("restore runtime selector: {error}"));
+        if let Err(save_error) = selector_store::save(app, "hotspot", "direct") {
+            errors.push(format!("restore persisted selector: {save_error}"));
+        }
+    }
+    if let Err(error) = run_magicnet_function(app, "magicnet_hotspot_offload_restore") {
+        errors.push(format!("restore tether offload: {error}"));
+    }
+    if let Err(error) = run_magicnet_function(app, "magicnet_hotspot_route_cleanup") {
+        errors.push(format!("clean hotspot route: {error}"));
+    }
+    if errors.is_empty() {
+        Ok(())
+    } else {
+        Err(errors.join("; "))
+    }
+}
+
+fn rollback_hotspot_disable(app: &App) -> Result<(), String> {
+    let mut errors = Vec::new();
+    if let Err(error) = run_magicnet_function(app, "magicnet_hotspot_offload_enable") {
+        errors.push(format!("restore tether offload: {error}"));
+    }
+    if let Err(error) = select_proxy(app, "hotspot", "proxy") {
+        errors.push(format!("restore runtime selector: {error}"));
+        if let Err(save_error) = selector_store::save(app, "hotspot", "proxy") {
+            errors.push(format!("restore persisted selector: {save_error}"));
+        }
+    }
+    if let Err(error) = run_magicnet_function(app, "magicnet_hotspot_reconcile") {
+        errors.push(format!("restore hotspot route: {error}"));
+    }
+    if let Err(error) = run_magicnet_function(app, "magicnet_hotspot_watchdog_start") {
+        errors.push(format!("restore hotspot route watcher: {error}"));
+    }
+    if errors.is_empty() {
+        Ok(())
+    } else {
+        Err(errors.join("; "))
+    }
 }
 
 pub(crate) fn hotspot_cmd(app: &App, args: &[String]) -> Result<(), String> {
@@ -179,17 +265,25 @@ pub(crate) fn hotspot_cmd(app: &App, args: &[String]) -> Result<(), String> {
             Ok(())
         }
         "reconcile" => {
+            let _hotspot_action_guard = hotspot_action_lock(app)?;
             run_magicnet_function(app, "magicnet_hotspot_reconcile")?;
             refresh_hotspot_policy_if_stale(app)
         }
         "enable" | "disable" => {
+            let _hotspot_action_guard = hotspot_action_lock(app)?;
             let member = if action == "enable" {
                 "proxy"
             } else {
                 "direct"
             };
             if action == "enable" {
-                run_magicnet_function(app, "magicnet_hotspot_offload_enable")?;
+                if let Err(error) = run_magicnet_function(app, "magicnet_hotspot_offload_enable") {
+                    let rollback = rollback_hotspot_enable(app).err();
+                    if let Some(rollback) = rollback {
+                        return Err(format!("enable tether offload: {error}; rollback failed: {rollback}"));
+                    }
+                    return Err(format!("enable tether offload: {error}"));
+                }
             }
             let selected = if curl_get_json(app, "/proxies").is_ok() {
                 select_proxy(app, "hotspot", member)
@@ -202,7 +296,9 @@ pub(crate) fn hotspot_cmd(app: &App, args: &[String]) -> Result<(), String> {
             };
             if let Err(error) = selected {
                 if action == "enable" {
-                    rollback_hotspot_enable(app);
+                    if let Err(rollback) = rollback_hotspot_enable(app) {
+                        return Err(format!("{error}; rollback failed: {rollback}"));
+                    }
                 }
                 return Err(error);
             }
@@ -211,25 +307,51 @@ pub(crate) fn hotspot_cmd(app: &App, args: &[String]) -> Result<(), String> {
                 // Materialize the active downstream subnet and restart only
                 // when the effective runtime fingerprint changed.
                 if let Err(error) = apply_config(app) {
-                    rollback_hotspot_enable(app);
+                    let rollback = rollback_hotspot_enable(app).err();
+                    if let Some(rollback) = rollback {
+                        return Err(format!("apply hotspot TUN policy: {error}; rollback failed: {rollback}"));
+                    }
                     return Err(format!("apply hotspot TUN policy: {error}"));
                 }
                 if let Err(error) = run_magicnet_function(app, "magicnet_hotspot_reconcile") {
-                    rollback_hotspot_enable(app);
+                    let rollback = rollback_hotspot_enable(app).err();
+                    if let Some(rollback) = rollback {
+                        return Err(format!("apply hotspot TUN route: {error}; rollback failed: {rollback}"));
+                    }
                     return Err(format!("apply hotspot TUN route: {error}"));
                 }
                 if let Err(error) = run_magicnet_function(app, "magicnet_hotspot_watchdog_start") {
-                    rollback_hotspot_enable(app);
+                    let rollback = rollback_hotspot_enable(app).err();
+                    if let Some(rollback) = rollback {
+                        return Err(format!("start hotspot route watcher: {error}; rollback failed: {rollback}"));
+                    }
                     return Err(format!("start hotspot route watcher: {error}"));
                 }
             }
             if action == "disable" {
-                run_magicnet_function(app, "magicnet_hotspot_offload_restore")?;
                 let stop_result = run_magicnet_function(app, "magicnet_hotspot_watchdog_stop");
                 let cleanup_result = run_magicnet_function(app, "magicnet_hotspot_route_cleanup");
-                stop_result?;
-                cleanup_result?;
-                refresh_hotspot_policy_if_stale(app)?;
+                if let Err(error) = stop_result.and(cleanup_result) {
+                    let rollback = rollback_hotspot_disable(app).err();
+                    if let Some(rollback) = rollback {
+                        return Err(format!("disable hotspot route: {error}; rollback failed: {rollback}"));
+                    }
+                    return Err(format!("disable hotspot route: {error}"));
+                }
+                if let Err(error) = run_magicnet_function(app, "magicnet_hotspot_offload_restore") {
+                    let rollback = rollback_hotspot_disable(app).err();
+                    if let Some(rollback) = rollback {
+                        return Err(format!("restore tether offload: {error}; rollback failed: {rollback}"));
+                    }
+                    return Err(format!("restore tether offload: {error}"));
+                }
+                if let Err(error) = refresh_hotspot_policy_if_stale(app) {
+                    let rollback = rollback_hotspot_disable(app).err();
+                    if let Some(rollback) = rollback {
+                        return Err(format!("refresh hotspot policy: {error}; rollback failed: {rollback}"));
+                    }
+                    return Err(format!("refresh hotspot policy: {error}"));
+                }
             }
             Ok(())
         }

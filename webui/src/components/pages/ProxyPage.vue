@@ -2,16 +2,18 @@
 import { t } from "@/i18n";
 import PageHeader from "@/components/ui/PageHeader.vue";
 import ProxyGroupsPanel from "./ProxyGroupsPanel.vue";
+import RoutingRulesPanel from "./RoutingRulesPanel.vue";
 </script>
 
 <template>
   <div class="proxy-page">
     <PageHeader
-      :overline="t('运行选择')"
-      :title="t('代理')"
-      :description="t('订阅负责提供来源，代理页面负责查看实际节点、策略组并切换当前节点。')"
+      :overline="t('运行策略')"
+      :title="t('节点与路由')"
+      :description="t('在这里选择策略组出站，并查看当前生效的路由规则。')"
     />
     <ProxyGroupsPanel />
+    <RoutingRulesPanel />
   </div>
 </template>
 

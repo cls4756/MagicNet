@@ -51,15 +51,7 @@ test("pending commands keep navigation responsive and execute in order", async (
   })).toBe(2);
 
   // Both actions must complete while the first native exit callback is withheld.
-  await page.getByRole("button", { name: /外观主题/ }).click();
-  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
-  const desktopOutput = page.locator('.desktop-rail [data-tab="output"]');
-  if (await desktopOutput.isVisible()) {
-    await desktopOutput.click();
-  } else {
-    await page.locator('[data-workspace="toolbox"]:visible').click();
-    await page.locator('.mn-section-tabs [data-tab="output"]:visible').click();
-  }
+  await page.evaluate(() => { window.location.hash = '/output'; });
   await expect(page.getByRole("heading", { name: "最近输出", exact: true })).toBeVisible();
   expect(await page.evaluate(() => ({
     started: window.__commandBridge.started,

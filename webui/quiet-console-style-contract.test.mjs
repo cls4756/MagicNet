@@ -11,24 +11,29 @@ const pageHeader = read("./src/components/ui/PageHeader.vue");
 const design = read("./DESIGN.md");
 
 void test("mobile paper uses quiet surfaces and restrained action emphasis", () => {
-  assert.match(styles, /--mn-ivory:\s*#fafaf7/i);
-  assert.match(styles, /--mn-surface-raised:\s*#252823/i);
-  assert.match(styles, /--mn-primary:\s*#30382f/i);
-  assert.match(styles, /--mn-primary:\s*#dee3d4/i);
-  assert.match(styles, /--mn-radius-lg:\s*16px/i);
-  assert.match(styles, /--mn-shadow-card:\s*none/i);
+  assert.match(styles, /--mn-ivory:\s*#eef1f5/i);
+  assert.match(styles, /--mn-surface-raised:\s*#ffffff/i);
+  assert.match(styles, /--mn-primary:\s*#2f6bed/i);
+  assert.match(styles, /--mn-primary:\s*#5b8def/i);
+  assert.match(styles, /--mn-radius-lg:\s*20px/i);
+  assert.match(styles, /--mn-shadow-card:\s*0 1px 2px/i);
   assert.match(
     styles,
     /\.magic-card\s*\{[^}]*border-radius:\s*0[^}]*background:\s*transparent/,
   );
   assert.doesNotMatch(
     styles,
-    /linear-gradient|radial-gradient|backdrop-filter:\s*blur/i,
+    /linear-gradient|radial-gradient/i,
   );
 });
 
 void test("shell is outcome-led rather than terminal-themed", () => {
-  assert.match(app, /class="mn-runtime-brief"/);
+  assert.match(app, /class="mn-operation-glass"/);
+  assert.match(app, /role="dialog"/);
+  assert.match(app, /aria-modal="true"/);
+  assert.match(app, /:inert="operationPanelActive"/);
+  assert.match(styles, /\.mn-operation-overlay\s*\{[\s\S]*z-index:\s*1000/);
+  assert.match(styles, /background:\s*rgb\(20 28 40 \/ 72%\)/);
   assert.doesNotMatch(app, /activeWorkspace\.description|>网络控制</);
   assert.match(app, /:aria-label="t\('全部页面'\)"/);
   assert.doesNotMatch(app, /mobileLabel:/);
@@ -43,17 +48,18 @@ void test("shell is outcome-led rather than terminal-themed", () => {
     /ROOT:\/\/MAGICNET|ROUTE_STACK|WORKSPACES|root@magicnet/,
   );
   assert.doesNotMatch(app, /workspace\.code|item\.code/);
-  assert.match(app, /readTabFromLocation/);
-  assert.match(app, /writeTabToLocation/);
+  assert.match(app, /readLocation/);
+  assert.match(app, /writeLocation/);
   assert.match(
     app,
-    /window\.addEventListener\("popstate", syncTabFromLocation\)/,
+    /window\.addEventListener\("popstate", syncFromLocation\)/,
   );
 });
 
 void test("shared primitives preserve labels and reduce decorative copy", () => {
-  assert.match(button, /v-if="loading"/);
-  assert.doesNotMatch(button, /loading \? 'opacity-0'/);
+  assert.match(button, /v-if="busy"/);
+  assert.match(button, /t\("执行中…"\)/);
+  assert.match(button, /visibility:\s*hidden/);
   assert.doesNotMatch(pageHeader, /mn-page-kicker/);
   assert.match(pageHeader, /v-if="description"/);
 });

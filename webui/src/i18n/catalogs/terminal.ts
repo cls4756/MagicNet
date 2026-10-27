@@ -67,6 +67,10 @@ export default {
     "Press Tab or tap to autocomplete, Up/Down for history",
     "Нажмите Tab для автодополнения, стрелки вверх/вниз для истории"
   ],
+  "输入 clear 清屏": [
+    "type clear to clear the screen",
+    "введите clear, чтобы очистить экран"
+  ],
   "耗时": [
     "Duration",
     "Время"

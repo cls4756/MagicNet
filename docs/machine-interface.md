@@ -58,6 +58,7 @@ network.status
 domain-forward.status
 sub.status
 wifi.status
+routing.inspect
 machine.capabilities
 ```
 
@@ -71,7 +72,16 @@ Examples:
 /data/adb/modules/MagicNet/cli --json domain-forward status
 /data/adb/modules/MagicNet/cli --json sub status
 /data/adb/modules/MagicNet/cli --json wifi status
+/data/adb/modules/MagicNet/cli --json routing inspect
 ```
+
+`routing.inspect` is a read-only, redacted view of the effective sing-box
+routing rules and outbound graph. It preserves rule order, reports whether a
+rule is a MagicNet-managed custom-domain rule, and separates configured
+defaults from observed runtime selections. It does not return node credentials,
+subscription URLs, or raw configuration secrets. The WebUI only offers add,
+edit, and delete for MagicNet-managed domain suffix records; provider-owned and
+other feature-owned rules remain read-only in this view.
 
 ## Readiness semantics
 
@@ -112,6 +122,8 @@ Examples already enforced in schema 1:
 - Wi-Fi status reports connection/match state and list counts; it does not expose SSID or BSSID text.
 - Network status separates `configured` policy from the values materialized in the effective sing-box configuration.
 - DNS status reports the canonical application profile plus `bootstrap_configured` and `bootstrap_transport`; it does not expose a private router DNS address discovered from the active Android network. Explicit LAN DNS configuration is reported separately under `lan` with its configured gateway, domain suffixes, and separate `configured` / `effective` flags.
+- Network status includes `configured.dns_interception` and `effective.dns_interception`, both bounded to `on`, `off`, or `unavailable`; the setting does not expose resolver addresses.
+- The human `network set` command accepts an optional fourth argument, `on|off`; omitting it preserves the current DNS interception choice. New/default installations use `on`.
 - Domain-forwarding status reports `configured`, `core_support` and `effective` tokens plus a boolean rule flag; it never returns sniffed domains, rule contents or core paths.
 - Service PID inspection distinguishes `running`, `stopped` and `unknown`; an inspection failure is not treated as a running service.
 - Transparent status reports attachment states and interface counts, not shared-interface names.

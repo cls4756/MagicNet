@@ -19,6 +19,7 @@ pub(crate) fn route_cmd(app: &App, args: &[String]) -> Result<(), String> {
             Ok(())
         }
         "add-domain" | "remove-domain" => route_domain(app, args),
+        "edit-domain" => route_edit_domain(app, args),
         "apply" => route_apply_and_restart(app),
         _ => Err(route_usage()),
     }
@@ -39,11 +40,8 @@ fn route_list(app: &App) {
 fn route_domain(app: &App, args: &[String]) -> Result<(), String> {
     let target = args.get(1).map(String::as_str).unwrap_or_default();
     let domain = args.get(2).map(String::as_str).unwrap_or_default();
-    if domain.is_empty() {
+    if !valid_route_domain(domain) {
         return Err(route_usage());
-    }
-    if domain.bytes().any(|byte| byte.is_ascii_whitespace()) {
-        return Err(format!("invalid domain suffix: {domain}"));
     }
     update_line(
         app,
@@ -54,6 +52,58 @@ fn route_domain(app: &App, args: &[String]) -> Result<(), String> {
     route_apply_and_restart(app)?;
     println!("[info] Route rule updated");
     Ok(())
+}
+
+fn route_edit_domain(app: &App, args: &[String]) -> Result<(), String> {
+    if args.len() != 5 {
+        return Err(route_usage());
+    }
+    let old_target = args[1].as_str();
+    let new_target = args[2].as_str();
+    let old_domain = args[3].as_str();
+    let new_domain = args[4].as_str();
+    if !valid_route_domain(old_domain) || !valid_route_domain(new_domain) {
+        return Err(route_usage());
+    }
+    let old_path = route_file(app, old_target)?;
+    let new_path = route_file(app, new_target)?;
+    let old_relative = old_path
+        .strip_prefix(&app.moddir)
+        .map_err(|_| "refusing to update a route outside the module root".to_string())?;
+    let new_relative = new_path
+        .strip_prefix(&app.moddir)
+        .map_err(|_| "refusing to update a route outside the module root".to_string())?;
+    let mut old_lines = clean_module_lines(app, old_relative)?;
+    if !old_lines.iter().any(|line| line == old_domain) {
+        return Err("domain suffix not found in the selected route list".to_string());
+    }
+
+    if old_relative == new_relative {
+        old_lines.retain(|line| line != old_domain && line != new_domain);
+        old_lines.push(new_domain.to_string());
+        let text = unique_lines_text(&old_lines);
+        replace_module_text_files_transactionally(app, &[(old_relative, &text)])?;
+    } else {
+        old_lines.retain(|line| line != old_domain);
+        let mut new_lines = clean_module_lines(app, new_relative)?;
+        new_lines.retain(|line| line != new_domain);
+        new_lines.push(new_domain.to_string());
+        let old_text = unique_lines_text(&old_lines);
+        let new_text = unique_lines_text(&new_lines);
+        replace_module_text_files_transactionally(
+            app,
+            &[(old_relative, &old_text), (new_relative, &new_text)],
+        )?;
+    }
+    route_apply_and_restart(app)?;
+    println!("[info] Route rule updated");
+    Ok(())
+}
+
+fn valid_route_domain(domain: &str) -> bool {
+    !domain.is_empty()
+        && domain.len() <= 253
+        && !domain.bytes().any(|byte| byte.is_ascii_whitespace() || byte.is_ascii_control())
 }
 
 fn route_apply_and_restart(app: &App) -> Result<(), String> {
@@ -71,7 +121,7 @@ fn route_file(app: &App, target: &str) -> Result<PathBuf, String> {
 }
 
 fn route_usage() -> String {
-    "Usage: cli route {list|add-domain <proxy|direct|block|warp> <domain-suffix>|remove-domain <proxy|direct|block|warp> <domain-suffix>|apply}".to_string()
+    "Usage: cli route {list|add-domain <proxy|direct|block|warp> <domain-suffix>|remove-domain <proxy|direct|block|warp> <domain-suffix>|edit-domain <old-target> <new-target> <old-suffix> <new-suffix>|apply}".to_string()
 }
 
 pub(crate) fn app_cmd(app: &App, args: &[String]) -> Result<(), String> {

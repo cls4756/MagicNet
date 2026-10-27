@@ -27,6 +27,16 @@ assert.match(control, /type HotspotPolicyPhase = "loading" \| "ready" \| "error"
 assert.match(control, /hotspotPolicyPhase\.value = "loading"/);
 assert.match(control, /hotspotPolicyPhase\.value = "error"/);
 assert.match(control, /hotspotPolicyPhase !== 'ready'/);
+assert.match(control, /isRunning\("hotspot-proxy"\)/);
+const hotspotToggle = control.slice(
+  control.indexOf("async function toggleHotspotProxy"),
+  control.indexOf("async function setWifiPolicyMode"),
+);
+assert.ok(
+  hotspotToggle.indexOf('hotspotProxyEnabled.value = enabled') >
+    hotspotToggle.indexOf('await withAction("hotspot-proxy"'),
+  "hotspot UI state must update only after the action lock is acquired",
+);
 assert.match(control, /aria-busy="hotspotPolicyPhase === 'loading'"/);
 assert.match(control, /role="alert"/);
 assert.match(control, /MagicNet 没读到当前热点设置/);
@@ -58,6 +68,10 @@ assert.match(webuiApi, /"replay"[\s\S]*sync_persisted_hotspot_offload/);
 assert.match(webuiApi, /"reconcile"[\s\S]*refresh_hotspot_policy_if_stale/);
 assert.match(webuiApi, /"disable"[\s\S]*refresh_hotspot_policy_if_stale/);
 assert.match(webuiApi, /rollback_hotspot_enable/);
+assert.match(webuiApi, /HOTSPOT_ACTION_LOCK/);
+assert.match(webuiApi, /hotspot action is still busy/);
+assert.match(webuiApi, /rollback failed/);
+assert.match(webuiApi, /rollback_hotspot_disable/);
 const startSingBox = core.slice(
   core.indexOf("magicnet_start_singbox_unlocked()"),
   core.indexOf("magicnet_with_sub_config_lock magicnet_start_singbox"),

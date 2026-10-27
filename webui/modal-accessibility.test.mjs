@@ -18,6 +18,8 @@ for (const invariant of [
   "restoreFocusAfterUpdate(trigger)",
   'role="dialog"',
   'aria-modal="true"',
+  'ref="operationDialog"',
+  'tabindex="-1"',
 ]) {
   assert.ok(source.includes(invariant), `utility sheet missing ${invariant}`);
 }

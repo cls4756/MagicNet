@@ -153,11 +153,11 @@
 
 /* Open-section layout: fewer visible boxes, stronger spacing. */
 .magic-card {
-  padding-block: 30px;
+  padding-block: 20px;
 }
 
 .magic-card .magic-card {
-  padding-block: 20px;
+  padding-block: 16px;
 }
 
 .mn-card-title {
@@ -169,13 +169,13 @@
 }
 
 .mn-disclosure > summary {
-  min-height: 68px;
-  padding-block: 18px;
+  min-height: 56px;
+  padding-block: 12px;
 }
 
 .mn-disclosure__body {
-  gap: 18px;
-  padding-bottom: 30px;
+  gap: 12px;
+  padding-bottom: 14px;
 }
 
 .mn-pill,

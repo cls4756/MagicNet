@@ -7,7 +7,6 @@ use crate::{ebpf_runtime::inspect_ebpf_attachments, run_magicnet_function, App};
 
 const CONFIG: &str = ".config/sing-box/config.json";
 const CAPABILITY: &str = ".state/transparent-ebpf/capability";
-const PROBE_REPORT: &str = ".state/transparent-ebpf/probe.json";
 const SHARED_PENDING: &str = ".state/transparent-ebpf/shared.pending";
 const TRANSACTION: &str = ".state/transparent-transaction";
 const RECENT_ERROR: &str = ".state/transparent-recent-error";
@@ -108,24 +107,21 @@ pub(super) fn snapshot(app: &App, process_state: &str, configured_mode: &str) ->
     let attachments = if process_state == "running"
         && run_magicnet_function(app, "magicnet_ebpf_refresh_active_report >/dev/null 2>&1").is_ok()
     {
-        read_regular_text(&app.moddir.join(PROBE_REPORT), 512 * 1024)
-            .and_then(|text| serde_json::from_str::<Value>(&text).ok())
-            .map(|report| {
-                let cgroup_path = inbound
-                    .and_then(|value| value.get("local"))
-                    .and_then(|value| value.get("cgroup_path"))
-                    .and_then(Value::as_str)
-                    .filter(|path| Path::new(path).is_absolute())
-                    .unwrap_or("/sys/fs/cgroup");
-                inspect_ebpf_attachments(
-                    app,
-                    &report,
-                    local_expected,
-                    cgroup_path,
-                    &network_values(inbound),
-                    &shared_interfaces,
-                )
-            })
+        Some({
+            let cgroup_path = inbound
+                .and_then(|value| value.get("local"))
+                .and_then(|value| value.get("cgroup_path"))
+                .and_then(Value::as_str)
+                .filter(|path| Path::new(path).is_absolute())
+                .unwrap_or("/sys/fs/cgroup");
+            inspect_ebpf_attachments(
+                app,
+                local_expected,
+                cgroup_path,
+                &network_values(inbound),
+                &shared_interfaces,
+            )
+        })
     } else {
         None
     };

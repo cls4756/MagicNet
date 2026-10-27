@@ -93,7 +93,7 @@ WebUI 的“工具”页提供同一个开关，默认打开。状态分三层�
 
 - `Proxy`：应用进入当前透明数据面，并强制使用代理规则。
 - `Direct`：应用仍被接管，但使用 sing-box `direct` 出站；验证“不要走 MagicNet 代理”通常选它。
-- `Bypass`：应用完全离开 MagicNet。模块按所有 Android 用户解析包 UID，并让这些 UID 同时绕过当前数据面与 DNS 捕获，适合外部 VPN 或明确的共存需求。部分设备的 `netd` 会以 UID 0 代发系统 DNS；存在 Bypass UID 时，DNS 捕获会保守保留 UID 0 直通，以维持这项边界。
+- `Bypass`：应用完全离开 MagicNet。模块按所有 Android 用户解析包 UID，并让这些 UID 同时绕过当前数据面与 DNS 捕获，适合外部 VPN 或明确的共存需求。具体 Bypass UID 发出的普通 DNS 请求会绕过捕获；但部分设备的 `netd` 会以 UID 0 代发系统 DNS，此时已无法恢复原应用 UID。MagicNet 会继续捕获 UID 0 的 DNS，并按全局 DNS 规则与当前 Profile 解析，避免一个 Bypass 应用导致其他应用的 DNS 一并泄露。
 
 ```bash
 su -c '/data/adb/modules/MagicNet/cli app add com.example.app proxy'
@@ -118,7 +118,7 @@ su -c /data/adb/modules/MagicNet/cli dns bootstrap status
 su -c '/data/adb/modules/MagicNet/cli dns bootstrap set system'
 ```
 
-`system` 会在应用配置时读取 Android 当前网络下发的 DNS 地址并由 sing-box 直连查询，适合路由器私有域名和分流 DNS；读取失败时配置切换会失败并回滚。它不是对 Android `netd` 的逐请求转发，Wi-Fi、热点或蜂窝网络切换后应执行 `cli dns apply` 重新读取当前网络 DNS。直接访问 `192.168.0.0/16` 等 IP 地址本身不经过 DNS。默认值仍为 `aliyun`，以保持旧版本行为。
+`system` 会在应用配置时读取 Android 当前网络下发的 DNS 地址并由 sing-box 直连查询，适合路由器私有域名和分流 DNS；读取失败时配置切换会失败并回滚。它不是对 Android `netd` 的逐请求转发：只有选择 `system` 时才运行网络 watcher，由网络事件唤醒 DNS 快照刷新，并保留低频兜底检查；切换到其他 Bootstrap DNS 后 watcher 会停止。如果设备厂商没有提供可用的网络事件，仍可手动执行 `cli dns apply`。直接访问 `192.168.0.0/16` 等 IP 地址本身不经过 DNS。默认值仍为 `aliyun`，以保持旧版本行为。
 
 WebUI 的应用列表显示应用名称（来自管理器的包信息接口）；能提供应用图标的 KernelSU 管理器会直接显示图标，其余情况退化为包名首字母，名称始终回退到包名。搜索框同时匹配应用名称和包名，因此可以按“微信”这类名称直接过滤。`cli app packages` 只按包名过滤，缺少包信息接口时会退回到该路径。
 

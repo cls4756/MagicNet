@@ -39,7 +39,7 @@ test("terminal admits a rapid command once, avoids persistence and clears cached
     stored: localStorage.getItem(key),
   }), legacyKey);
   expect(result).toEqual({ runs: 1, disk: [], stored: legacyValue });
-  await page.evaluate(() => { location.hash = "/health"; });
+  await page.evaluate(() => { location.hash = "/subs"; });
   await expect(page.locator(".terminal-page")).not.toBeVisible();
   await page.evaluate(() => { location.hash = "/terminal"; });
   await expect(input).toBeEnabled();

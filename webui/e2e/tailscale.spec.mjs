@@ -114,7 +114,7 @@ test("leaving the cached page clears only the key, not the device-name draft", a
   await mount(page);
   await fill(page);
   await page.evaluate(() => { window.location.hash = "/output"; });
-  await expect(page.locator(".page-surface")).toHaveAttribute("data-page", "output");
+  await expect(page.locator(".page-surface")).toHaveAttribute("data-page", "settings");
   await page.evaluate(() => { window.location.hash = "/tailscale"; });
   await expect(page.getByLabel("设备名称", { exact: true })).toHaveValue("my-phone");
   await expectNoSecret(page);

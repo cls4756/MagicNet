@@ -70,6 +70,8 @@ export default {
   "切换社区库": ["Toggle community list", "Переключить список сообщества"],
   "规则": ["Rules", "Правила"],
   "拦截规则": ["Blocking rules", "Правила блокировки"],
+  "编辑 {value}": ["Edit {value}", "Редактировать {value}"],
+  "删除 {value}": ["Delete {value}", "Удалить {value}"],
   "读取": ["Load", "Загрузить"],
   "复制快照": ["Copy snapshot", "Копировать снимок"],
   "黑名单变更 Issue": ["Blocklist change issue", "Обсуждение изменений блокировки"],
@@ -86,6 +88,7 @@ export default {
   "社区库已启用": ["Community list enabled", "Список сообщества включён"],
   "社区库已关闭": ["Community list disabled", "Список сообщества отключён"],
   "添加": ["Add", "Добавить"],
+  "添加域名规则": ["Add domain rule", "Добавить доменное правило"],
   "过滤本地阻断、社区规则和广告放行白名单": ["Filter local blocks, community rules and ad allowlist", "Фильтр локальных блокировок, правил сообщества и исключений рекламы"],
   "阻断": ["Blocked", "Блокировки"],
   "移除 {domain}": ["Remove {domain}", "Удалить {domain}"],
@@ -289,4 +292,5 @@ export default {
   "write -> route apply -> restart": ["write -> route apply -> restart", "запись → route apply → перезапуск"],
   "App": ["App", "Приложение"],
   "Internet": ["Internet", "Интернет"],
+  "配置规则数量超过展示上限，表格内容已截断。": ["The configured rule count exceeds the display limit; the table has been truncated.", "Количество настроенных правил превышает предел отображения; таблица усечена."],
 } satisfies Record<string, [string, string]>;

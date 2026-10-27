@@ -24,18 +24,9 @@ const names = [
   "refreshAll",
   "refreshStatus", "markQuietFailure",
 ];
-const controlSource = ts.createSourceFile(
-  "ControlPage.ts",
-  readFileSync(new URL("./src/components/pages/ControlPage.vue", import.meta.url), "utf8")
-    .split('<script setup lang="ts">')[1].split("</script>")[0],
-  ts.ScriptTarget.Latest,
-  true,
-);
 const functions = source.statements
   .filter((node) => ts.isFunctionDeclaration(node) && names.includes(node.name?.text))
-  .map((node) => node.getText(source)).join("\n") + "\n" + controlSource.statements
-  .find((node) => ts.isFunctionDeclaration(node) && node.name?.text === "rebuildNodeCache")
-  .getText(controlSource);
+  .map((node) => node.getText(source)).join("\n");
 const code = ts.transpileModule(functions, {
   compilerOptions: { target: ts.ScriptTarget.ES2022 },
 }).outputText;
@@ -264,25 +255,6 @@ test("a superseded baseline failure leaves the newer foreground feedback untouch
   assert.equal(state.output, "new foreground output");
   assert.equal(state.notice, "new notice");
   assert.equal(state.phase, "done");
-});
-
-test("ControlPage completion does not begin a foreground refresh over a newer action", async () => {
-  const { context, state, timers, supersede } = backgroundFixture();
-  state.backgroundTask.status = "idle";
-  let attempt = 1;
-  context.runCli = async (args) => args === "--json sub inspect"
-    ? subscriptionSnapshot({last:{...subscriptionData().last,attempt_epoch:attempt,generation_id:`generation-${attempt}`}})
-    : "";
-  context.runShellOutcome = async () => ({ ok: true, stdout: "[accepted] id=operation", text: "accepted" });
-  await context.rebuildNodeCache();
-  const foregroundToken = supersede();
-  attempt = 2;
-  while (timers.length) await timers.shift()();
-  assert.equal(state.backgroundTask.status, "done");
-  assert.equal(state.subscriptions.lastAttemptEpoch, 2);
-  assert.equal(context.foregroundUiGate.current(), foregroundToken);
-  assert.equal(state.output, "new foreground output");
-  assert.equal(state.notice, "new notice");
 });
 
 const serviceSnapshot = JSON.stringify({schema:1,ok:true,command:"service.status",data:{

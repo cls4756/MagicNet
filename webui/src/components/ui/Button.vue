@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { Loader2 } from "lucide-vue-next";
 import { cva } from "class-variance-authority";
-import { computed } from "vue";
+import { computed, ref, useAttrs } from "vue";
+import type { ClassValue } from "clsx";
+import { t } from "@/i18n";
 import { cn } from "@/lib/utils";
 
 defineOptions({ inheritAttrs: false });
@@ -11,18 +13,62 @@ const props = withDefaults(
     variant?: "default" | "secondary" | "outline" | "ghost" | "destructive";
     size?: "sm" | "md" | "icon";
     loading?: boolean;
+    autoLoading?: boolean;
     disabled?: boolean;
     type?: "button" | "submit" | "reset";
-    class?: string;
+    class?: ClassValue;
   }>(),
   {
     variant: "default",
     size: "md",
     loading: false,
+    autoLoading: true,
     disabled: false,
     type: "button",
   },
 );
+
+type ClickHandler = (event: MouseEvent) => unknown;
+
+const attrs = useAttrs();
+const pending = ref(false);
+const busy = computed(() => props.loading || pending.value);
+const forwardedAttrs = computed(() => {
+  const { onClick: _onClick, ...rest } = attrs;
+  return rest;
+});
+
+function isPromiseLike(value: unknown): value is PromiseLike<unknown> {
+  return (
+    (typeof value === "object" && value !== null) || typeof value === "function"
+  ) && typeof (value as PromiseLike<unknown>).then === "function";
+}
+
+function clickHandlers(): ClickHandler[] {
+  const listener = attrs.onClick;
+  const listeners = Array.isArray(listener) ? listener : [listener];
+  return listeners.filter((item): item is ClickHandler => typeof item === "function");
+}
+
+function handleClick(event: MouseEvent): void {
+  if (busy.value || props.disabled) {
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    return;
+  }
+
+  const tasks: PromiseLike<unknown>[] = [];
+  for (const handler of clickHandlers()) {
+    const result = handler(event);
+    if (props.autoLoading && isPromiseLike(result)) tasks.push(result);
+  }
+  if (!tasks.length) return;
+
+  pending.value = true;
+  void Promise.allSettled(tasks.map((task) => Promise.resolve(task))).then(() => {
+    pending.value = false;
+  });
+}
 
 const buttonVariants = cva(
   "mn-button group relative inline-flex max-w-full items-center justify-center whitespace-normal rounded-[var(--mn-radius-md)] border text-sm font-medium transition-[transform,color,background-color,border-color,opacity] duration-150 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--mn-focus)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--mn-ivory)] active:translate-y-px disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-55 disabled:active:translate-y-0",
@@ -60,14 +106,18 @@ const classes = computed(() =>
 
 <template>
   <button
-    v-bind="$attrs"
+    v-bind="forwardedAttrs"
     :type="type"
     :class="classes"
     :data-size="size"
-    :disabled="loading || disabled"
-    :aria-busy="loading ? 'true' : undefined"
+    :disabled="busy || disabled"
+    :aria-busy="busy ? 'true' : undefined"
+    @click="handleClick"
   >
-    <Loader2 v-if="loading" v-show="size === 'icon'" class="mn-button__spinner motion-safe:animate-spin" :size="18" aria-hidden="true" />
+    <span v-if="busy" class="mn-button__busy" aria-live="polite">
+      <Loader2 class="motion-safe:animate-spin" :size="18" aria-hidden="true" />
+      <span v-if="size !== 'icon'">{{ t("执行中…") }}</span>
+    </span>
     <span class="mn-button__content inline-flex min-w-0 items-center justify-center gap-2">
       <slot />
     </span>
@@ -75,29 +125,19 @@ const classes = computed(() =>
 </template>
 
 <style scoped>
-/* Loading never adds intrinsic width or replaces a text button's label. */
+/* Busy feedback overlays the stable button geometry, then restores the label. */
 .mn-button[aria-busy="true"] { opacity: 1; }
-.mn-button__spinner { position: absolute; inset: 0; margin: auto; }
-.mn-button[aria-busy="true"][data-size="icon"] .mn-button__content { opacity: 0; }
-.mn-button[aria-busy="true"]:not([data-size="icon"])::after {
-  content: "";
+.mn-button__busy {
   position: absolute;
-  inset-inline: calc(50% - 12px);
-  bottom: 5px;
-  height: 2px;
-  border-radius: 999px;
-  background: currentColor;
+  inset: 0;
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding-inline: 0.75rem;
+  white-space: nowrap;
   pointer-events: none;
-  animation: mn-button-working 900ms ease-in-out infinite alternate;
 }
-@keyframes mn-button-working {
-  from { opacity: 0.35; }
-  to { opacity: 1; }
-}
-@media (prefers-reduced-motion: reduce) {
-  .mn-button[aria-busy="true"]:not([data-size="icon"])::after { animation: none; }
-}
-@media (forced-colors: active) {
-  .mn-button[aria-busy="true"]:not([data-size="icon"])::after { background: ButtonText; }
-}
+.mn-button[aria-busy="true"] .mn-button__content { visibility: hidden; }
 </style>

@@ -11,7 +11,6 @@ const primitives = [
   "components/ui/Eyebrow.vue",
   "components/ui/CardHeading.vue",
   "components/ui/InsightChip.vue",
-  "components/ui/RemovableTag.vue",
   "components/ui/SearchField.vue",
   "components/ui/StatusDot.vue",
   "components/ui/StatTile.vue",
@@ -77,7 +76,6 @@ const consumers = {
   "src/components/pages/ControlPage.vue": [
     "CardHeading",
     "ConfirmPanel",
-    "RemovableTag",
     "StatTile",
   ],
   "src/components/pages/ConfigPage.vue": ["InsightChip"],

@@ -48,7 +48,7 @@ test("five clicks reveal GPT-6, retain previous visitors, and wrap the rotation"
 });
 
 test("run-page layout is scoped and short viewports retain scrolling menus", () => {
-  assert.match(app, /class="page-surface" :data-page="activeTab"/);
+  assert.match(app, /class="page-surface" :data-page="activeWorkspaceKey"/);
   const control = readFileSync(
     new URL("./src/components/pages/ControlPage.vue", import.meta.url),
     "utf8",
@@ -64,27 +64,33 @@ test("run-page layout is scoped and short viewports retain scrolling menus", () 
   );
 });
 
-test("configuration navigation always opens subscriptions while other groups retain their last page", () => {
-  const selected = [];
+test("workspace navigation selects the requested workspace and resets settings detail", () => {
+  const warmWorkspaceCalls = [];
+  const loadedWorkspaces = [];
+  let written = 0;
   const scope = {
-    setTab: (tab) => selected.push(tab),
-    lastTabByWorkspace: {
-      value: {
-        configure: "config",
-        run: "about",
-        route: "chain",
-        toolbox: "output",
-      },
+    activeWorkspaceKey: { value: "settings" },
+    settingsRoute: { value: "outbound" },
+    warmWorkspace: (workspace) => warmWorkspaceCalls.push(workspace),
+    workspaceLoaders: {
+      dashboard: () => { loadedWorkspaces.push("dashboard"); },
+      nodes: () => { loadedWorkspaces.push("nodes"); },
+      subs: () => { loadedWorkspaces.push("subs"); },
+      settings: () => { loadedWorkspaces.push("settings"); },
     },
+    writeLocation: () => { written += 1; },
   };
   const source = app
     .match(
-      /function setWorkspace\(workspace: WorkspaceKey\): void \{[\s\S]*?\n\}/,
+      /function selectWorkspace\(workspace: WorkspaceKey\): void \{[\s\S]*?\n\}/,
     )[0]
     .replace(": WorkspaceKey", "")
     .replace(": void", "");
   runInNewContext(source, scope);
-  for (const workspace of ["configure", "run", "route", "toolbox"])
-    scope.setWorkspace(workspace);
-  assert.deepEqual(selected, ["subs", "about", "chain", "output"]);
+  scope.selectWorkspace("subs");
+  assert.equal(scope.activeWorkspaceKey.value, "subs");
+  assert.equal(scope.settingsRoute.value, null);
+  assert.deepEqual(warmWorkspaceCalls, ["subs"]);
+  assert.deepEqual(loadedWorkspaces, ["subs"]);
+  assert.equal(written, 1);
 });

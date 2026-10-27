@@ -137,6 +137,14 @@ assert_managed_ebpf() {
     ' "$MODDIR/.config/sing-box/config.json" >/dev/null
 }
 
+assert_dns_interception_disabled() {
+  "$HOST_JQ" -e '
+      ([.inbounds[] | select(.tag == "magicnet-dns-in")] | length) == 0
+      and (.inbounds[] | select(.tag == "tun-in") | .local.dns_mode == "off" and .shared.dns_mode == "off")
+      and ([.route.rules[] | select(.action == "hijack-dns")] | length) == 0
+    ' "$MODDIR/.config/sing-box/config.json" >/dev/null
+}
+
 write_base_config
 set_mode_file ebpf
 export MAGICNET_TEST_IPV6_MODE=prefer_ipv4
@@ -148,6 +156,14 @@ assert_managed_ebpf hybrid '' '' true
 validate_transparent
 rg -q '^sing-box tools ebpf status ' "$MOCK_LOG"
 rg -q '^sing-box check ' "$MOCK_LOG"
+
+printf '%s\n' 'MAGICNET_DNS_INTERCEPTION=off' >"$MODDIR/.config/magicnet/network-policy.conf"
+apply_transparent
+assert_dns_interception_disabled
+
+printf '%s\n' 'MAGICNET_DNS_INTERCEPTION=on' >"$MODDIR/.config/magicnet/network-policy.conf"
+apply_transparent
+assert_managed_ebpf hybrid '' '' true
 
 # Reapplying the same effective mode is byte-idempotent and never duplicates
 # the stable managed tag.

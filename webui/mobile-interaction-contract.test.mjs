@@ -27,14 +27,14 @@ assert.match(
   "button targets must remain at least 48px tall",
 );
 assert.match(card, /magic-card/, "shared sections retain their semantic surface class");
-assert.match(styles, /\.magic-card\s*\{[^}]*border-top: 1px solid var\(--mn-border\);[^}]*border-radius: 0;/,
-  "top-level sections use a continuous layout with a visible divider");
+assert.match(styles, /\.magic-card\s*\{[^}]*border: 1px solid var\(--mn-border\);[^}]*border-radius: var\(--mn-radius-lg\);/,
+  "top-level sections use bounded card surfaces");
 
 assert.match(
   app,
-  /type WorkspaceKey = "run" \| "route" \| "configure" \| "toolbox"/,
+  /type WorkspaceKey = "dashboard" \| "nodes" \| "subs" \| "settings"/,
 );
-for (const label of ["运行", "路由", "配置", "工具"]) {
+for (const label of ["仪表盘", "节点", "订阅", "设置"]) {
   assert.match(
     app,
     new RegExp(`label: "${label}"`),
@@ -43,13 +43,13 @@ for (const label of ["运行", "路由", "配置", "工具"]) {
 }
 assert.match(
   app,
-  /:aria-current="activeWorkspace\.key === workspace\.key \? 'page' : undefined"/,
+  /:aria-current="activeWorkspaceKey === workspace\.key \? 'page' : undefined"/,
 );
 assert.match(
   styles,
   /\.mobile-nav\s*\{[\s\S]*grid-template-columns:\s*repeat\(4,/,
 );
-assert.match(styles, /\.mobile-nav button\s*\{[\s\S]*min-height:\s*56px/);
+assert.match(styles, /\.mobile-nav button\s*\{[\s\S]*min-height:\s*52px/);
 assert.match(styles, /env\(safe-area-inset-bottom\)/);
 assert.match(styles, /env\(safe-area-inset-top\)/);
 assert.match(styles, /env\(safe-area-inset-left\)/);

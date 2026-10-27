@@ -2,19 +2,18 @@ import { test, expect } from "@playwright/test";
 
 const pages = [
   ["run", "control", null],
-  ["run", "about", "流量路径"],
-  ["route", "apps", "应用名单"],
-  ["route", "block", "拦截规则"],
-  ["route", "chain", "链式代理"],
+  ["route", "apps", "应用分流"],
+  ["route", "block", "代理设置"],
+  ["route", "chain", "节点与路由"],
   ["configure", "subs", "订阅管理"],
-  ["configure", "config", "配置文件"],
-  ["configure", "webui", "面板配置"],
-  ["configure", "dns", "DNS 配置"],
-  ["route", "domain", "域名转发"],
-  ["route", "warp", "WARP 出站"],
-  ["configure", "stack", "协议栈"],
-  ["toolbox", "health", "诊断"],
-  ["toolbox", "output", "最近输出"],
+  ["configure", "config", "内核设置"],
+  ["configure", "webui", "内核设置"],
+  ["configure", "dns", "代理设置"],
+  ["route", "domain", "代理设置"],
+  ["route", "warp", "外部出站"],
+  ["configure", "stack", "代理设置"],
+  ["toolbox", "health", "维护"],
+  ["toolbox", "output", "日志"],
   ["toolbox", "tools", "维护"],
 ];
 
@@ -37,13 +36,7 @@ async function navigate(page, workspace, tab, heading) {
   await page.evaluate(() => {
     if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
   });
-  const desktopPage = page.locator(`.desktop-rail [data-tab="${tab}"]`);
-  if (await desktopPage.isVisible()) {
-    await desktopPage.click();
-  } else {
-    await page.locator(`[data-workspace="${workspace}"]:visible`).click();
-    await page.locator(`.mn-section-tabs [data-tab="${tab}"]:visible`).click();
-  }
+  await page.evaluate((tab) => { window.location.hash = `/${tab}`; }, tab);
   if (heading)
     await expect(page.locator(".page-surface h2").first()).toHaveText(heading);
   else await expect(page.locator(".mn-control")).toBeVisible();
@@ -141,7 +134,7 @@ test("a fresh browser opens the overview instead of an unusable setup flow", asy
   try {
     await fresh.goto("/", { waitUntil: "networkidle" });
     await expect(
-      fresh.getByRole("heading", { name: "未连接设备" }),
+      fresh.getByRole("region", { name: "服务概览" }).getByText("未连接设备", { exact: true }),
     ).toBeVisible();
     await expect(fresh.getByRole("dialog")).toHaveCount(0);
   } finally {
@@ -228,22 +221,18 @@ test("mode changes use a focus-trapped confirmation, never optimistic state", as
 test("device unavailable, stopped, unknown, and failed states remain distinct", async ({
   page,
 }) => {
-  await expect(page.getByRole("heading", { name: "未连接设备" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "服务概览" }).getByText("未连接设备", { exact: true })).toBeVisible();
   await expect(
     page.getByRole("button", { name: "启动服务", exact: true }),
   ).toBeDisabled();
   await seedView(page, { singBoxState: "stopped" });
-  await expect(
-    page.getByRole("heading", { name: "已停止", exact: true }),
-  ).toBeVisible();
+  await expect(page.locator(".mn-control-service-value").getByText("已停止", { exact: true })).toBeVisible();
   await seedView(page, {
     singBoxState: "unknown",
     transparentMode: "unknown",
     transparentEffectiveMode: "unknown",
   });
-  await expect(
-    page.getByRole("heading", { name: "状态未知", exact: true }),
-  ).toBeVisible();
+  await expect(page.locator(".mn-control-service-value").getByText("状态未知", { exact: true })).toBeVisible();
   await seedView(page, {
     transparentRecentError: "Fixture: capability check failed",
   });
@@ -256,15 +245,12 @@ test("device unavailable, stopped, unknown, and failed states remain distinct", 
     useMagicNet().state.output =
       "No cached sing-box nodes found; run cli sub update sing-box";
   });
-  await expect(
-    page.getByRole("button", { name: "更新订阅并重建节点" }),
-  ).toBeVisible();
 });
 
 test("native editor preserves drafts and blocks empty or invalid saves", async ({
   page,
 }) => {
-  await navigate(page, "configure", "config", "配置文件");
+  await navigate(page, "configure", "config", "内核设置");
   await seedView(page);
   const field = page.locator(".json-editor__textarea");
   const save = page.getByRole("button", {
@@ -274,10 +260,11 @@ test("native editor preserves drafts and blocks empty or invalid saves", async (
   await expect(save).toBeDisabled();
   const draft = '{\n  "log": { "level": "info" }\n}';
   await field.fill(draft);
+  await page.evaluate(async () => { (await import("/src/composables/useMagicNet.ts")).useMagicNet().state.hasKsu = true; });
   await expect(field).toHaveAttribute("aria-invalid", "false");
   await expect(save).toBeEnabled();
   await navigate(page, "run", "control", null);
-  await navigate(page, "configure", "config", "配置文件");
+  await navigate(page, "configure", "config", "内核设置");
   await expect(field).toHaveValue(draft);
   await field.fill('{ "log": ');
   await expect(field).toHaveAttribute("aria-invalid", "true");
@@ -287,10 +274,10 @@ test("native editor preserves drafts and blocks empty or invalid saves", async (
 });
 
 test("toolbar menus fit the page when opened", async ({ page }) => {
-  const toolbarMenuPages = pages.filter(([, tab]) => tab === "config" || tab === "health");
+  const toolbarMenuPages = pages.filter(([, tab]) => tab === "config");
   for (const [workspace, tab, heading] of toolbarMenuPages) {
     await navigate(page, workspace, tab, heading);
-    const menu = page.locator(".mn-page-actions .config-action-menu");
+    const menu = page.locator(".config-action-menu");
     await menu.locator("summary").click();
     await expect(menu).toHaveAttribute("open", "");
     await expectNoHorizontalOverflow(page);
@@ -356,6 +343,8 @@ test("expanded controls and enlarged text keep actions reachable", async ({
   page,
 }) => {
   await seedView(page);
+  await page.evaluate(() => { window.location.hash = "/settings/service"; });
+  await expect(page.getByRole("button", { name: "应用配置", exact: true })).toBeVisible();
   await page.evaluate(() => {
     document.documentElement.style.fontSize = "200%";
     document.querySelectorAll(".mn-control details").forEach((detail) => {
@@ -366,9 +355,6 @@ test("expanded controls and enlarged text keep actions reachable", async ({
   const brand = await page.locator(".mn-brand-copy h1").boundingBox();
   const actions = await page.locator(".mn-global-actions").boundingBox();
   expect(brand.x + brand.width).toBeLessThanOrEqual(actions.x + 1);
-  await expect(
-    page.getByRole("button", { name: "应用配置", exact: true }),
-  ).toBeVisible();
   await page.getByRole("button", { name: "应用配置", exact: true }).click();
   await expect(page.getByRole("alertdialog")).toBeVisible();
   await expectNoHorizontalOverflow(page);

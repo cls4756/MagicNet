@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 
-const tabs = ['control', 'about', 'apps', 'block', 'chain', 'subs', 'tailscale', 'config', 'webui', 'dns', 'domain', 'warp', 'stack', 'health', 'tools', 'output'];
+const tabs = ['control', 'apps', 'block', 'chain', 'subs', 'tailscale', 'config', 'webui', 'dns', 'domain', 'warp', 'stack', 'health', 'tools', 'output'];
 async function changeLanguage(page, language) {
   const header = page.locator('.mn-language-header select');
   if (await header.isVisible()) {
@@ -24,11 +24,11 @@ for (const [browserLocale, language, overview] of [
       page.on('pageerror', (error) => errors.push(error.message));
       await page.goto('/');
       await expect(page.locator('html')).toHaveAttribute('lang', language);
-      await expect(page.locator('.mn-section-tabs [data-tab="control"]')).toHaveText(overview);
+      await expect(page.locator('.mn-control')).toContainText(language === 'en' ? 'Service status' : 'Состояние службы');
       for (const tab of tabs) {
         await page.evaluate((tab) => { window.location.hash = `/${tab}`; }, tab);
-        await expect(page.locator('.page-surface')).toHaveAttribute('data-page', tab);
-        await expect(page.locator('.page-surface h2').first()).toBeVisible();
+        if (tab === 'control') await expect(page.locator('.mn-control')).toBeVisible();
+        else await expect(page.locator('.page-surface h2').first()).toBeVisible();
         await page.evaluate(() => {
           document.querySelectorAll('.page-surface details:not(.config-action-menu)').forEach((node) => { node.open = true; });
         });
@@ -68,11 +68,11 @@ test('manual language survives reload and keeps an unsaved editor draft', async 
   await editor.fill('{"tag":"用户自定义 Москва"}');
   await changeLanguage(page, 'ru');
   await expect(editor).toHaveValue('{"tag":"用户自定义 Москва"}');
-  await expect(page.locator('.page-surface h2').first()).toHaveText('Файл конфигурации');
+  await expect(page.locator('.page-surface h2').first()).toHaveText('Настройки ядра');
   await page.reload();
   await expect(page.locator('html')).toHaveAttribute('lang', 'ru');
   await changeLanguage(page, 'en');
-  await expect(page.locator('.page-surface h2').first()).toHaveText('Configuration file');
+  await expect(page.locator('.page-surface h2').first()).toHaveText('Kernel settings');
   await changeLanguage(page, 'zh-CN');
-  await expect(page.locator('.page-surface h2').first()).toHaveText('配置文件');
+  await expect(page.locator('.page-surface h2').first()).toHaveText('内核设置');
 });

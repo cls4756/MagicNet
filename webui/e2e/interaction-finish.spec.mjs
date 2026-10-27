@@ -17,31 +17,69 @@ async function setTask(page, task) {
   }, task);
 }
 
-test("busy buttons keep their geometry, labels and disabled state", async ({ page }) => {
+test("busy buttons keep their geometry and show explicit progress", async ({ page }) => {
   const buttons = [
     ["刷新面板", "刷新面板", true],
     ["创建 GitHub Issue", "创建 GitHub issue", false],
   ];
-  for (const [label, task, iconOnly] of buttons) {
-    const button = page.getByRole("button", { name: label, exact: true });
-    if (!(await button.isVisible())) continue; // Feedback lives in the desktop toolbar.
+  for (const [index, [label, task, iconOnly]] of buttons.entries()) {
+    const initialButton = page.getByRole("button", { name: label, exact: true });
+    if (!(await initialButton.isVisible())) continue; // Feedback lives in the desktop toolbar.
+    await initialButton.evaluate((element, id) => {
+      element.dataset.e2eBusyButton = String(id);
+    }, index);
+    const button = page.locator(`[data-e2e-busy-button="${index}"]`);
     const before = await button.boundingBox();
-    const text = await button.innerText();
     await setTask(page, task);
     await expect(button).toHaveAttribute("aria-busy", "true");
     await expect(button).toBeDisabled();
+    if (!iconOnly) await expect(button).toContainText("执行中");
     const during = await button.boundingBox();
     for (const key of ["x", "y", "width", "height"])
       expect(Math.abs(during[key] - before[key])).toBeLessThan(1);
-    expect(await button.innerText()).toBe(text);
-    await expect(button.locator(".mn-button__content")).toHaveCSS("opacity", iconOnly ? "0" : "1");
-    if (!iconOnly) {
-      expect(await button.evaluate((el) => getComputedStyle(el, "::after").animationName)).toBe("none");
-    }
+    await expect(button.locator(".mn-button__content")).toHaveCSS("visibility", "hidden");
     await setTask(page, "");
     await expect(button).toBeEnabled();
-    await expect(button.locator(".mn-button__content")).toHaveCSS("opacity", "1");
+    await expect(button.locator(".mn-button__content")).toHaveCSS("visibility", "visible");
   }
+});
+
+test("async click handlers automatically lock and restore their button", async ({ page }) => {
+  await page.addInitScript(() => {
+    window.__clipboardWrites = 0;
+    window.__resolveClipboard = null;
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: {
+        writeText() {
+          window.__clipboardWrites += 1;
+          return new Promise((resolve) => {
+            window.__resolveClipboard = resolve;
+          });
+        },
+      },
+    });
+  });
+  await page.reload({ waitUntil: "networkidle" });
+  await page.evaluate(async () => {
+    const { state } = (await import("/src/composables/useMagicNet.ts")).useMagicNet();
+    state.output = "button pending fixture";
+  });
+
+  await page.evaluate(() => { window.location.hash = '/output'; });
+
+  const button = page.locator(".page-surface .mn-button").filter({ hasText: /复制脱敏/ }).first();
+  await button.click();
+  await expect(button).toHaveAttribute("aria-busy", "true");
+  await expect(button).toBeDisabled();
+  await expect(button).toContainText("执行中");
+  await button.dispatchEvent("click");
+  expect(await page.evaluate(() => window.__clipboardWrites)).toBe(1);
+
+  await page.evaluate(() => window.__resolveClipboard?.());
+  await expect(button).not.toHaveAttribute("aria-busy", "true");
+  await expect(button).toBeEnabled();
+  expect(await page.evaluate(() => window.__clipboardWrites)).toBe(1);
 });
 
 test("navigation and disclosure focus remain distinct in both themes", async ({ page }, testInfo) => {
@@ -53,7 +91,7 @@ test("navigation and disclosure focus remain distinct in both themes", async ({ 
     await expect(active).toHaveCount(1);
     const colors = await active.evaluate((el) => [getComputedStyle(el).backgroundColor, getComputedStyle(document.body).backgroundColor]);
     expect(colors[0]).not.toBe(colors[1]);
-    const summary = page.locator(".mn-disclosure > summary").first();
+    const summary = page.locator(".mn-control-details > summary").first();
     await page.keyboard.press("Tab");
     await summary.focus();
     await expect(summary).toBeFocused();

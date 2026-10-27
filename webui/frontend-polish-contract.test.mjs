@@ -26,9 +26,11 @@ const radiusSurfaces = [
   .map(read)
   .join("\n");
 
-assert.match(button, /:aria-busy="loading \? 'true' : undefined"/);
-assert.match(button, /<Loader2 v-if="loading"/);
-assert.doesNotMatch(button, /loading \? 'opacity-0'/);
+assert.match(button, /const busy = computed\(\(\) => props\.loading \|\| pending\.value\)/);
+assert.match(button, /:aria-busy="busy \? 'true' : undefined"/);
+assert.match(button, /<span v-if="busy" class="mn-button__busy"/);
+assert.match(button, /Promise\.allSettled/);
+assert.doesNotMatch(button, /busy \? 'opacity-0'/);
 
 assert.match(editorRendering, /MAX_HIGHLIGHT_CHARACTERS/);
 assert.match(editorRendering, /MAX_HIGHLIGHT_LINES/);
@@ -39,8 +41,8 @@ assert.match(editor, /json-editor__error-jump/);
 assert.doesNotMatch(editor, /Array\.from\(\{ length: lineCount\.value \}/);
 assert.match(configPage, /analyzedConfigText/);
 assert.match(configPage, /configAnalysisPending/);
-assert.match(controlPage, /aria-label="Wi-Fi SSID"/);
-assert.match(controlPage, /aria-label="Wi-Fi BSSID"/);
+assert.match(controlPage, /:aria-label="t\('Wi-Fi 名称（SSID）'\)"/);
+assert.match(controlPage, /aria-label="BSSID"/);
 
 assert.match(visibilityTask, /globalThis\.IntersectionObserver/);
 assert.match(
@@ -53,11 +55,11 @@ for (const panel of deferredPanels) {
   assert.doesNotMatch(panel, /onMounted\(\(\) => \{\s*void refresh/);
 }
 
-assert.match(
-  app,
-  /if \(tab !== activeTab\.value\) \{[\s\S]*warmActiveTab\(tab\);[\s\S]*writeTabToLocation\(tab\);[\s\S]*void nextTick/,
-);
-assert.match(app, /@pointerenter="prefetchTab\(item\.key\)"/);
+assert.match(app, /function selectWorkspace\(workspace: WorkspaceKey\): void/);
+assert.match(app, /if \(changed\) warmWorkspace\(workspace\)/);
+assert.match(app, /void workspaceLoaders\[workspace\]\(\)/);
+assert.match(app, /writeLocation\(\)/);
+assert.match(app, /@pointerenter="prefetchWorkspace\(workspace\.key\)"/);
 assert.match(styles, /scrollbar-gutter:\s*stable/);
 assert.match(styles, /content-visibility:\s*auto/);
 assert.match(styles, /\.mn-workspace-header\s*\{[\s\S]*position:\s*sticky/);

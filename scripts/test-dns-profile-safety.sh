@@ -185,7 +185,7 @@ assert_profile_direct_only google-dot-direct tls 853 google
 assert_profile_direct_only adguard-doh-direct https 443 adguard
 assert_profile_direct_only quad9-doh-direct https 443 quad9
 
-for direct_profile in cloudflare-udp-direct; do
+direct_profile=cloudflare-udp-direct
   MAGICNET_BOOTSTRAP_DNS=aliyun MAGICNET_DNS_PROFILE="$direct_profile" magicnet_dns_apply_singbox
   jq -e --arg direct_profile "$direct_profile" '
     (if ($direct_profile | startswith("cloudflare")) then "cloudflare" else "google" end) as $tag_prefix
@@ -198,7 +198,6 @@ for direct_profile in cloudflare-udp-direct; do
     printf 'DNS profile %s must preserve UDP transport when direct\n' "$direct_profile" >&2
     exit 1
   }
-done
 
 cat >"$MODDIR/.config/magicnet/dns.conf" <<'EOF'
 MAGICNET_LAN_DNS_SERVER=192.168.50.1

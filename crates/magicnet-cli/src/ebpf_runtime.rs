@@ -1,6 +1,5 @@
 use crate::{owned_singbox_pids, read_proc_text_bounded, run_bounded_command, App};
-use serde_json::Value;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 use std::ffi::CString;
 use std::fs::{self, File};
 use std::os::fd::AsRawFd;
@@ -48,30 +47,25 @@ pub(crate) struct EbpfAttachmentEvidence {
 
 pub(crate) fn inspect_ebpf_attachments(
     app: &App,
-    report: &Value,
     local_expected: bool,
     cgroup_path: &str,
     network: &[String],
     shared_interfaces: &[String],
 ) -> EbpfAttachmentEvidence {
-    let active = match active_programs(report) {
-        Ok(active) => active,
-        Err(reason) => return failed_evidence(shared_interfaces, reason),
-    };
     let held = match core_program_ids(app) {
         Ok(held) => held,
         Err(reason) => return failed_evidence(shared_interfaces, reason),
     };
 
     let local = if local_expected {
-        inspect_local_attachments(cgroup_path, network, &active, &held)
+        inspect_local_attachments(cgroup_path, network, &held)
     } else {
         Ok(())
     };
     let mut shared_states = Vec::with_capacity(shared_interfaces.len());
     let mut shared_errors = Vec::new();
     for interface in shared_interfaces {
-        match inspect_shared_attachment(interface, &active, &held) {
+        match inspect_shared_attachment(interface, &held) {
             Ok(()) => shared_states.push((interface.clone(), true)),
             Err(reason) => {
                 shared_states.push((interface.clone(), false));
@@ -116,40 +110,6 @@ fn failed_evidence(shared_interfaces: &[String], reason: String) -> EbpfAttachme
             .collect(),
         detail: reason,
     }
-}
-
-fn active_programs(report: &Value) -> Result<BTreeMap<u32, String>, String> {
-    if report
-        .get("active_state_error")
-        .and_then(Value::as_str)
-        .is_some_and(|error| !error.is_empty())
-    {
-        return Err("active-state-error".to_string());
-    }
-    let programs = report
-        .get("active_programs")
-        .and_then(Value::as_array)
-        .ok_or_else(|| "active-program-report-missing".to_string())?;
-    let mut active = BTreeMap::new();
-    for program in programs {
-        let Some(id) = program
-            .get("id")
-            .and_then(Value::as_u64)
-            .and_then(|id| u32::try_from(id).ok())
-        else {
-            continue;
-        };
-        let Some(name) = program.get("name").and_then(Value::as_str) else {
-            continue;
-        };
-        if name.starts_with("sb_ebpf_") || name.starts_with("sb_share_") {
-            active.insert(id, name.to_string());
-        }
-    }
-    if active.is_empty() {
-        return Err("managed-active-programs-missing".to_string());
-    }
-    Ok(active)
 }
 
 fn core_program_ids(app: &App) -> Result<BTreeSet<u32>, String> {
@@ -201,7 +161,6 @@ fn parse_fdinfo_program_ids(text: &str) -> BTreeSet<u32> {
 fn inspect_local_attachments(
     cgroup_path: &str,
     network: &[String],
-    active: &BTreeMap<u32, String>,
     held: &BTreeSet<u32>,
 ) -> Result<(), String> {
     let cgroup = File::open(cgroup_path).map_err(|_| "cgroup-open-failed".to_string())?;
@@ -220,7 +179,7 @@ fn inspect_local_attachments(
             .map_err(|_| format!("cgroup-query-{attach_type}-failed"))?;
         if !ids
             .iter()
-            .any(|id| managed_program_matches(*id, "sb_ebpf_", active, held))
+            .any(|id| held.contains(id))
         {
             return Err(format!("cgroup-attach-{attach_type}-missing"));
         }
@@ -230,7 +189,6 @@ fn inspect_local_attachments(
 
 fn inspect_shared_attachment(
     interface: &str,
-    active: &BTreeMap<u32, String>,
     held: &BTreeSet<u32>,
 ) -> Result<(), String> {
     let interface_c = CString::new(interface).map_err(|_| "interface-invalid".to_string())?;
@@ -242,10 +200,10 @@ fn inspect_shared_attachment(
     let tcx_egress = query_program_ids(index, BPF_TCX_EGRESS).unwrap_or_default();
     let tcx_ok = tcx_ingress
         .iter()
-        .any(|id| managed_program_matches(*id, "sb_share_in", active, held))
+        .any(|id| held.contains(id))
         && tcx_egress
             .iter()
-            .any(|id| managed_program_matches(*id, "sb_share_out", active, held));
+            .any(|id| held.contains(id));
     if tcx_ok {
         return Ok(());
     }
@@ -254,24 +212,15 @@ fn inspect_shared_attachment(
     let egress = tc_filter_program_ids(interface, "egress", "sb_share_out")?;
     if ingress
         .iter()
-        .any(|id| managed_program_matches(*id, "sb_share_in", active, held))
+        .any(|id| held.contains(id))
         && egress
             .iter()
-            .any(|id| managed_program_matches(*id, "sb_share_out", active, held))
+            .any(|id| held.contains(id))
     {
         Ok(())
     } else {
         Err("tc-ingress-or-egress-missing".to_string())
     }
-}
-
-fn managed_program_matches(
-    id: u32,
-    prefix: &str,
-    active: &BTreeMap<u32, String>,
-    held: &BTreeSet<u32>,
-) -> bool {
-    held.contains(&id) && active.get(&id).is_some_and(|name| name.starts_with(prefix))
 }
 
 fn query_program_ids(target_fd: u32, attach_type: u32) -> Result<Vec<u32>, String> {
@@ -341,8 +290,8 @@ fn parse_tc_program_ids(text: &str, expected_name: &str) -> Vec<u32> {
 
 #[cfg(test)]
 mod tests {
-    use super::{managed_program_matches, parse_fdinfo_program_ids, parse_tc_program_ids};
-    use std::collections::{BTreeMap, BTreeSet};
+    use super::{parse_fdinfo_program_ids, parse_tc_program_ids};
+    use std::collections::BTreeSet;
 
     #[test]
     fn fdinfo_parser_collects_program_and_link_program_ids() {
@@ -358,14 +307,4 @@ mod tests {
         assert!(parse_tc_program_ids(text, "sb_share_out").is_empty());
     }
 
-    #[test]
-    fn attachment_match_binds_name_id_and_current_core_fd() {
-        let active = BTreeMap::from([
-            (42, "sb_ebpf_conn4".to_string()),
-            (77, "sb_share_in".to_string()),
-        ]);
-        let held = BTreeSet::from([42]);
-        assert!(managed_program_matches(42, "sb_ebpf_", &active, &held));
-        assert!(!managed_program_matches(77, "sb_share_", &active, &held));
-    }
 }

@@ -13,6 +13,8 @@ const { isRunning, withAction } = useActionLock();
 const ipv6Mode = ref("prefer_ipv4");
 const mtu = ref("1400");
 const udpTimeout = ref("5m");
+const dnsInterception = ref<"on" | "off">("on");
+const networkPolicyLoaded = ref(false);
 const effectiveMode = ref("unavailable");
 const effectiveStack = ref("unavailable");
 const effectiveMtu = ref("unavailable");
@@ -31,15 +33,18 @@ async function refreshStatus(silent = false): Promise<void> {
   ipv6Mode.value = status.configured.ipv6_mode;
   mtu.value = String(status.configured.mtu);
   udpTimeout.value = status.configured.udp_timeout;
+  dnsInterception.value = status.configured.dns_interception;
   effectiveMode.value = status.effective.ipv6_mode;
   effectiveStack.value = status.effective.stack;
   effectiveMtu.value = status.effective.mtu === null ? "unavailable" : String(status.effective.mtu);
   effectiveUdpTimeout.value = status.effective.udp_timeout;
+  networkPolicyLoaded.value = true;
 }
 
 async function applyPolicy(): Promise<void> {
+  if (!networkPolicyLoaded.value) return;
   await withAction("network-policy", async () => {
-    const command = `network set ${ipv6Mode.value} ${mtu.value} ${udpTimeout.value}`;
+    const command = `network set ${ipv6Mode.value} ${mtu.value} ${udpTimeout.value} ${dnsInterception.value}`;
     const output = await runCli(command, t("应用 UDP / IPv6 策略"));
     if (!execFailed(output)) await refreshStatus(true);
   });
@@ -86,7 +91,7 @@ onMounted(() => void refreshStatus(true));
       </label>
     </div>
     <div class="flex flex-wrap gap-2">
-      <Button :loading="isRunning('network-policy')" @click="applyPolicy">
+      <Button :disabled="!networkPolicyLoaded" :loading="isRunning('network-policy')" @click="applyPolicy">
         <Save :size="16" />{{ t("保存并应用") }}
       </Button>
       <Button variant="outline" :loading="isRunning('network-refresh')" @click="withAction('network-refresh', () => refreshStatus())">

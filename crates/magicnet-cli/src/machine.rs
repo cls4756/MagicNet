@@ -11,6 +11,7 @@ use crate::dns::dns_lan_config;
 
 mod subscription;
 mod transparent;
+mod routing;
 
 const MACHINE_SCHEMA: u64 = 1;
 const SELECTED_CORE_CONF: &str = ".config/magicnet/current-core.conf";
@@ -41,6 +42,7 @@ const MACHINE_COMMANDS: &[&str] = &[
     "sub.inspect",
     "wifi.status",
     "wifi.inspect",
+    "routing.inspect",
     "machine.capabilities",
 ];
 
@@ -110,6 +112,9 @@ fn machine_value(app: &App, command: &[&str]) -> Result<Value, MachineError> {
         [command, action] if *command == "wifi" && *action == "status" => {
             Ok(wifi_status_value(app))
         }
+        [command, action] if *command == "routing" && *action == "inspect" => {
+            routing::inspect(app)
+        }
         _ => Err(MachineError {
             code: "machine.unsupported_command",
             message: "unsupported machine command",
@@ -161,7 +166,7 @@ fn capabilities_value() -> Value {
                 "readiness_signals",
                 "lan_dns_routing"
             ],
-            "private_commands": ["sub.inspect", "wifi.inspect"],
+            "private_commands": ["sub.inspect", "wifi.inspect", "routing.inspect"],
             "json_flag_positions": ["prefix", "suffix"],
             "read_only": true,
         }),
@@ -361,6 +366,13 @@ fn network_status_value(app: &App) -> Value {
             .map(String::as_str)
             .unwrap_or_default(),
     );
+    let configured_dns_interception = match values
+        .get("MAGICNET_DNS_INTERCEPTION")
+        .map(String::as_str)
+    {
+        Some("off") | Some("0") | Some("false") | Some("disabled") => "off",
+        _ => "on",
+    };
 
     let effective =
         crate::utils::read_json_file_bounded(&app.moddir.join(SINGBOX_CONFIG), 4 * 1024 * 1024);
@@ -388,6 +400,38 @@ fn network_status_value(app: &App) -> Value {
         .and_then(|tun| tun.get("udp_timeout"))
         .and_then(Value::as_str)
         .unwrap_or("unavailable");
+    let effective_dns_interception = effective
+        .as_ref()
+        .and_then(|config| config.get("inbounds"))
+        .and_then(Value::as_array)
+        .and_then(|inbounds| {
+            if inbounds.iter().any(|inbound| {
+                inbound.get("tag").and_then(Value::as_str) == Some("magicnet-dns-in")
+            }) {
+                return Some("on");
+            }
+            let managed = inbounds.iter().find(|inbound| {
+                inbound.get("tag").and_then(Value::as_str) == Some("tun-in")
+            })?;
+            match managed.get("type").and_then(Value::as_str) {
+                Some("tun") => Some("off"),
+                Some("ebpf") => {
+                    let local = managed
+                        .get("local")
+                        .and_then(Value::as_object)
+                        .and_then(|value| value.get("dns_mode"))
+                        .and_then(Value::as_str);
+                    let shared = managed
+                        .get("shared")
+                        .and_then(Value::as_object)
+                        .and_then(|value| value.get("dns_mode"))
+                        .and_then(Value::as_str);
+                    (local == Some("off") && shared == Some("off")).then_some("off")
+                }
+                _ => None,
+            }
+        })
+        .unwrap_or("unavailable");
 
     envelope(
         "network.status",
@@ -396,12 +440,14 @@ fn network_status_value(app: &App) -> Value {
                 "ipv6_mode": configured_ipv6_mode,
                 "mtu": configured_mtu,
                 "udp_timeout": configured_udp_timeout,
+                "dns_interception": configured_dns_interception,
             },
             "effective": {
                 "ipv6_mode": effective_ipv6_mode,
                 "stack": effective_stack,
                 "mtu": effective_mtu,
                 "udp_timeout": effective_udp_timeout,
+                "dns_interception": effective_dns_interception,
             }
         }),
     )
@@ -689,7 +735,7 @@ fn dns_profile(app: &App) -> String {
         // Cloudflare profiles
         "cloudflare" | "cloudflare-doh" | "1.1.1.1-doh" | "doh" => "cloudflare-doh",
         "cloudflare-doh-direct" => "cloudflare-doh-direct",
-        "cloudflare" | "cloudflare-dot" | "1.1.1.1-dot" | "dot" => "cloudflare-dot",
+        "cloudflare-dot" | "1.1.1.1-dot" | "dot" => "cloudflare-dot",
         "cloudflare-dot-direct" => "cloudflare-dot-direct",
         "cloudflare-udp" | "1.1.1.1" | "udp" => "cloudflare-udp",
         "cloudflare-udp-direct" => "cloudflare-udp-direct",
@@ -838,7 +884,7 @@ mod tests {
         assert_eq!(value["data"]["read_only"], true);
         assert_eq!(
             value["data"]["private_commands"],
-            serde_json::json!(["sub.inspect", "wifi.inspect"])
+            serde_json::json!(["sub.inspect", "wifi.inspect", "routing.inspect"])
         );
         let commands = value["data"]["commands"]
             .as_array()
@@ -855,6 +901,9 @@ mod tests {
         assert!(commands
             .iter()
             .any(|command| command.as_str() == Some("wifi.status")));
+        assert!(commands
+            .iter()
+            .any(|command| command.as_str() == Some("routing.inspect")));
     }
 
     #[test]

@@ -67,41 +67,50 @@ function sourceLabel(value: string): string {
       </div>
     </div>
 
-    <div v-else-if="lines.length" class="source-list-rows">
-      <article v-for="(line, index) in lines" :key="`source-${index}`" class="source-list-row">
-        <span class="source-index" aria-hidden="true">{{ index + 1 }}</span>
-        <div class="source-row-main">
-          <div class="source-row-meta">
-            <span>{{ t("订阅 {value}", { value: index + 1 }) }}</span>
-            <span v-if="usageRows[index]?.hostname" class="source-host">{{ usageRows[index].hostname }}</span>
-            <span v-if="usageRows[index]" class="source-state" :data-state="usageRows[index].state">{{ usageRows[index].stateLabel }}</span>
+    <div v-else-if="lines.length" class="source-card-grid">
+      <article v-for="(line, index) in lines" :key="`source-${index}`" class="source-card" :data-active="index === 0 && !editable">
+        <header class="source-card-header">
+          <div class="source-card-identity">
+            <span class="source-index" aria-hidden="true">{{ index + 1 }}</span>
+            <div>
+              <h4>{{ usageRows[index]?.hostname || sourceLabel(line) || t("订阅 {value}", { value: index + 1 }) }}</h4>
+              <span>{{ t("订阅 {value}", { value: index + 1 }) }}<span v-if="usageRows[index]"> · {{ usageRows[index].stateLabel }}</span></span>
+            </div>
           </div>
-          <input
+          <Button
             v-if="editable"
-            class="source-row-input"
-            type="url"
-            :value="line"
-            :placeholder="t('HTTPS 订阅 URL')"
-            :aria-label="t('订阅 {value} URL', { value: index + 1 })"
-            autocomplete="off"
-            autocapitalize="none"
-            autocorrect="off"
-            spellcheck="false"
-            @input="updateLine(index, $event)"
+            variant="ghost"
+            size="icon"
+            :disabled="disabled || lines.length <= 1"
+            :aria-label="t('删除订阅 {value}', { value: index + 1 })"
+            :title="lines.length <= 1 ? t('至少保留一个订阅来源') : t('删除订阅 {value}', { value: index + 1 })"
+            @click="emit('remove', index)"
           >
-          <span v-else class="source-row-label" :title="sourceLabel(line)">{{ sourceLabel(line) || t("未填写") }}</span>
-        </div>
-        <Button
+            <Trash2 :size="16" aria-hidden="true" />
+          </Button>
+        </header>
+        <input
           v-if="editable"
-          variant="ghost"
-          size="icon"
-          :disabled="disabled || lines.length <= 1"
-          :aria-label="t('删除订阅 {value}', { value: index + 1 })"
-          :title="lines.length <= 1 ? t('至少保留一个订阅来源') : t('删除订阅 {value}', { value: index + 1 })"
-          @click="emit('remove', index)"
+          class="source-card-input"
+          type="url"
+          :value="line"
+          :placeholder="t('HTTPS 订阅 URL')"
+          :aria-label="t('订阅 {value} URL', { value: index + 1 })"
+          autocomplete="off"
+          autocapitalize="none"
+          autocorrect="off"
+          spellcheck="false"
+          @input="updateLine(index, $event)"
         >
-          <Trash2 :size="16" aria-hidden="true" />
-        </Button>
+        <template v-else>
+          <div v-if="usageRows[index]?.progressPercent !== null" class="source-card-progress">
+            <progress max="100" :value="usageRows[index].progressPercent" :aria-label="t('订阅 {value} 已用流量', { value: index + 1 })" />
+          </div>
+          <p class="source-card-usage" v-if="usageRows[index]">
+            {{ usageRows[index].usedLabel }} / {{ usageRows[index].totalLabel }}<span v-if="usageRows[index].expiryLabel"> · {{ usageRows[index].expiryLabel }}</span>
+          </p>
+          <p v-else class="source-card-usage">{{ t("尚未获取") }}</p>
+        </template>
       </article>
     </div>
 
@@ -118,23 +127,26 @@ function sourceLabel(value: string): string {
 
 <style scoped>
 .subscription-source-list { display: grid; gap: 14px; min-width: 0; }
-.source-list-heading, .source-list-title, .source-list-row, .source-row-meta, .local-source-row { display: flex; align-items: center; min-width: 0; }
+.source-list-heading, .source-list-title, .local-source-row { display: flex; align-items: center; min-width: 0; }
 .source-list-heading { justify-content: space-between; gap: 12px; }
 .source-list-title { gap: 12px; }
 .source-list-title > svg, .local-source-row > svg, .source-list-empty > svg { flex: 0 0 auto; color: var(--mn-ink-muted); }
 .source-list-title h3 { margin: 0; color: var(--mn-ink); font-size: .9375rem; font-weight: 600; }
 .source-list-title p { margin: 4px 0 0; color: var(--mn-ink-muted); font-size: .8125rem; line-height: 1.55; }
-.source-list-rows { display: grid; gap: 8px; }
-.source-list-row { gap: 10px; min-height: 64px; border: 1px solid var(--mn-border); border-radius: var(--mn-radius-sm); padding: 9px 10px; background: var(--mn-surface-sunken); }
+.source-card-grid { display: grid; gap: 12px; }
+.source-card { display: grid; gap: 14px; min-width: 0; border: 1px solid var(--mn-border); border-radius: 18px; padding: 18px; background: var(--mn-surface-sunken); }
+.source-card[data-active="true"] { border-color: var(--mn-primary); background: color-mix(in srgb, var(--mn-primary) 12%, var(--mn-surface-sunken)); }
+.source-card-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; min-width: 0; }
+.source-card-identity { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.source-card-identity h4 { margin: 0; color: var(--mn-ink); font-size: 1.05rem; font-weight: 650; overflow-wrap: anywhere; }
+.source-card-identity > div > span { display: block; margin-top: 4px; color: var(--mn-ink-muted); font-size: .75rem; }
 .source-index { display: grid; place-items: center; flex: 0 0 auto; width: 28px; height: 28px; border: 1px solid var(--mn-border-strong); border-radius: 50%; color: var(--mn-ink-muted); font-size: .75rem; font-variant-numeric: tabular-nums; }
-.source-row-main { display: grid; gap: 4px; min-width: 0; flex: 1; }
-.source-row-meta { flex-wrap: wrap; gap: 3px 8px; color: var(--mn-ink-muted); font-size: .75rem; }
-.source-host { color: var(--mn-ink-soft); overflow-wrap: anywhere; }
-.source-state { color: var(--mn-ink-muted); }
-.source-state[data-state="cached"] { color: var(--mn-warning); }
-.source-row-label { color: var(--mn-ink-soft); font-size: .875rem; line-height: 1.5; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.source-row-input { width: 100%; min-width: 0; border: 0; border-bottom: 1px solid var(--mn-border-strong); padding: 3px 0; color: var(--mn-ink); background: transparent; font: inherit; font-size: .875rem; outline: none; }
-.source-row-input:focus { border-bottom-color: var(--mn-primary); box-shadow: 0 1px 0 var(--mn-primary); }
+.source-card-input { width: 100%; min-width: 0; border: 1px solid var(--mn-border-strong); border-radius: 10px; padding: 12px; color: var(--mn-ink); background: var(--mn-ivory); font: inherit; font-size: .875rem; outline: none; }
+.source-card-input:focus { border-color: var(--mn-primary); box-shadow: 0 0 0 2px color-mix(in srgb, var(--mn-primary) 20%, transparent); }
+.source-card-progress progress { display: block; appearance: none; width: 100%; height: 5px; border: 0; border-radius: 999px; overflow: hidden; background: var(--mn-carrier); }
+.source-card-progress progress::-webkit-progress-bar { background: var(--mn-carrier); }
+.source-card-progress progress::-webkit-progress-value { background: var(--mn-primary); border-radius: 999px; }
+.source-card-usage { margin: 0; color: var(--mn-ink-soft); font-size: .875rem; line-height: 1.5; }
 .local-source-row { gap: 12px; border: 1px solid var(--mn-border); border-radius: var(--mn-radius-sm); padding: 14px; background: var(--mn-surface-sunken); }
 .local-source-row div { display: grid; gap: 3px; min-width: 0; }
 .local-source-row strong { color: var(--mn-ink-soft); font-size: .875rem; }
@@ -145,6 +157,5 @@ function sourceLabel(value: string): string {
   .source-list-heading { align-items: flex-start; flex-direction: column; }
   .source-list-heading > :last-child { width: 100%; }
   .source-list-heading > :last-child :deep(.mn-button) { width: 100%; }
-  .source-row-label { white-space: normal; overflow-wrap: anywhere; }
 }
 </style>

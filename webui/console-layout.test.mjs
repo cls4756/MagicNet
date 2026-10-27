@@ -8,7 +8,7 @@ const css = read("./src/styles.css");
 const header = read("./src/components/ui/PageHeader.vue");
 
 test("page heading and both action slots share a wrapping header", () => {
-  assert.match(header, /<div class="mn-page-header">/);
+  assert.match(header, /<div v-else class="mn-page-header">/);
   assert.match(header, /<slot name="actions">\s*<slot \/>/);
   assert.match(
     css,
@@ -37,7 +37,7 @@ test("the shared theme has one entry and scoped utility priority", () => {
 test("mobile status details wrap and high-contrast tabs retain selection", () => {
   assert.match(
     css,
-    /\.mn-runtime-brief > p\s*\{[^}]*overflow-wrap: anywhere;[^}]*white-space: normal;/,
+    /\.mn-operation-output\s*\{[^}]*white-space: pre-wrap;[^}]*overflow-wrap: anywhere;/,
   );
   assert.match(
     css,

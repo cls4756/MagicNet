@@ -1093,29 +1093,19 @@ fn transparent_status(app: &App) -> Result<(), String> {
             .filter(|value| matches!(value.as_str(), "ok" | "failed"))
             .unwrap_or_else(|| "unknown".to_string())
     };
-    let probe_fresh = effective != "ebpf"
-        || !running
-        || run_magicnet_function(app, "magicnet_ebpf_refresh_active_report").is_ok();
-    let probe_report = probe_fresh
-        .then(|| fs::read_to_string(app.moddir.join(TRANSPARENT_PROBE_REPORT)).ok())
-        .flatten()
-        .and_then(|text| serde_json::from_str::<Value>(&text).ok());
+    if effective == "ebpf" && running {
+        let _ = run_magicnet_function(app, "magicnet_ebpf_refresh_active_report");
+    }
     let local_expected = matches!(ebpf_mode, "local" | "hybrid");
     let shared_expected = matches!(ebpf_mode, "shared" | "hybrid");
     let attachments = (effective == "ebpf" && running)
-        .then(|| {
-            probe_report.as_ref().map(|report| {
-                inspect_ebpf_attachments(
-                    app,
-                    report,
-                    local_expected,
-                    cgroup_path,
-                    &network,
-                    &shared_interface_values,
-                )
-            })
-        })
-        .flatten();
+        .then(|| inspect_ebpf_attachments(
+            app,
+            local_expected,
+            cgroup_path,
+            &network,
+            &shared_interface_values,
+        ));
     let local_cgroup = if effective != "ebpf" || !local_expected {
         "inactive"
     } else if !running {

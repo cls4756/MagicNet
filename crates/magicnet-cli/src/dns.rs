@@ -226,6 +226,14 @@ fn update_dns_config(
         restore_dns_config(app, previous.as_deref())?;
         let _ = run_magicnet_function(app, "magicnet_dns_apply");
         let _ = restart_current_core(app);
+        let _ = run_magicnet_function(app, "magicnet_network_watch_sync");
+        return Err(error);
+    }
+    if let Err(error) = run_magicnet_function(app, "magicnet_network_watch_sync") {
+        restore_dns_config(app, previous.as_deref())?;
+        let _ = run_magicnet_function(app, "magicnet_dns_apply");
+        let _ = restart_current_core(app);
+        let _ = run_magicnet_function(app, "magicnet_network_watch_sync");
         return Err(error);
     }
     Ok(())
@@ -248,7 +256,7 @@ fn normalize_profile(profile: &str) -> Result<&'static str, String> {
         // Cloudflare profiles - preserve -direct suffix
         "cloudflare" | "cloudflare-doh" | "1.1.1.1-doh" | "doh" => Ok("cloudflare-doh"),
         "cloudflare-doh-direct" => Ok("cloudflare-doh-direct"),
-        "cloudflare" | "cloudflare-dot" | "1.1.1.1-dot" | "dot" => Ok("cloudflare-dot"),
+        "cloudflare-dot" | "1.1.1.1-dot" | "dot" => Ok("cloudflare-dot"),
         "cloudflare-dot-direct" => Ok("cloudflare-dot-direct"),
         "cloudflare-udp" | "1.1.1.1" | "udp" => Ok("cloudflare-udp"),
         "cloudflare-udp-direct" => Ok("cloudflare-udp-direct"),

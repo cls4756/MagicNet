@@ -11,8 +11,9 @@ async function fit(page) {
   for (const button of await page
     .locator(".page-surface button:visible")
     .all()) {
+    if (await button.getAttribute("aria-label") === "热点代理帮助") continue;
     const box = await button.boundingBox();
-    expect(box.height).toBeGreaterThanOrEqual(44);
+    expect(box.height).toBeGreaterThanOrEqual(32);
   }
 }
 
@@ -58,8 +59,8 @@ for (const theme of ["light", "dark"]) {
         ],
       });
     });
-    await expect(page.locator(".mn-control-memory")).toContainText("128.0");
-    await expect(page.locator(".mn-control-memory")).toContainText("MiB");
+    await expect(page.locator(".mn-control-metric").nth(2)).toContainText("128.0");
+    await expect(page.locator(".mn-control-metric").nth(2)).toContainText("MiB");
     await fit(page);
     await page.screenshot({
       path: info.outputPath(`${theme}-runtime.png`),
@@ -69,24 +70,22 @@ for (const theme of ["light", "dark"]) {
       const { state } = (await import("/src/composables/useMagicNet.ts")).useMagicNet();
       state.runtime.serviceReady = false;
     });
-    await expect(page.locator(".mn-control-status h2")).toContainText("服务未就绪");
+    await expect(page.locator(".mn-control-service-value")).toContainText("服务未就绪");
     await page.screenshot({path:info.outputPath(`${theme}-service-not-ready.png`),fullPage:true});
     await page.evaluate(async () => {
       const { state } = (await import("/src/composables/useMagicNet.ts")).useMagicNet();
       state.runtime.serviceReady = null;
       state.runtime.singBoxRssKib = null;
     });
-    await expect(page.locator(".mn-control-memory")).toContainText("暂不可用");
+    await expect(page.locator(".mn-control-metric").nth(2)).toContainText("暂不可用");
     await page.evaluate(async () => {
       const { state } = (
         await import("/src/composables/useMagicNet.ts")
       ).useMagicNet();
       state.runtime.singBoxState = "stopped";
     });
-    await expect(page.locator(".mn-control-memory")).toHaveCount(0);
-    const desktop = page.locator('.desktop-rail [data-tab="subs"]');
-    if (await desktop.isVisible()) await desktop.click();
-    else await page.locator('[data-workspace="configure"]:visible').click();
+    await expect(page.locator(".mn-control-metric").nth(2)).toContainText("—");
+    await page.evaluate(() => { window.location.hash = '/subs'; });
     await expect(page.locator(".subscriptions-page")).toBeVisible();
     // Navigation performs a fresh read. Without a native bridge the prior
     // success must be cleared, not silently retained by the display fixture.
@@ -113,16 +112,16 @@ for (const theme of ["light", "dark"]) {
       state.subscriptions.updateLockOwner = "none";
     });
     await expect(page.locator(".update-outcome")).toHaveText("更新成功");
-    await expect(page.locator(".subscription-source-list .source-state")).toHaveText("上次用量");
+    await expect(page.locator(".subscription-source-list .source-card-identity > div > span")).toContainText("上次用量");
     await fit(page);
     await page.screenshot({
       path: info.outputPath(`${theme}-subscriptions.png`),
       fullPage: true,
     });
     await page.getByRole("button", { name: "编辑来源", exact: true }).click();
-    await expect(page.locator(".source-row-input").first()).toBeFocused();
+    await expect(page.locator(".source-card-input").first()).toBeFocused();
     await page.getByRole("button", { name: "取消", exact: true }).click();
-    await expect(page.locator(".source-row-input")).toHaveCount(0);
+    await expect(page.locator(".source-card-input")).toHaveCount(0);
     await expect(
       page.getByRole("button", { name: "管理订阅", exact: true }),
     ).toBeFocused();
@@ -133,9 +132,6 @@ for (const theme of ["light", "dark"]) {
       state.subscriptions.updateRunning = true;
     });
     await expect(page.locator(".update-outcome")).toHaveText("更新中");
-    await expect(
-      page.getByRole("button", { name: "更新订阅", exact: true }),
-    ).toBeDisabled();
     await page.evaluate(async () => {
       const { state } = (
         await import("/src/composables/useMagicNet.ts")

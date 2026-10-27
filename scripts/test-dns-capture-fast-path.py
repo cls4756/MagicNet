@@ -19,6 +19,13 @@ set -eu
 magicnet_cmd_exists() { return 0; }
 magicnet_transparent_mode() { printf '%s\n' "${MODE:-tun}"; }
 magicnet_ipv6_mode() { printf '%s\n' "${IPV6_MODE:-prefer_ipv4}"; }
+magicnet_dns_interception() {
+    value="${MAGICNET_DNS_INTERCEPTION:-${MAGIC_DNS_CAPTURE:-on}}"
+    case "$value" in
+        0|false|no|off|disabled) printf '%s\n' off ;;
+        *) printf '%s\n' on ;;
+    esac
+}
 magicnet_dns_profile() { printf '%s\n' "${PROFILE:-default}"; }
 magicnet_dns_capture_singbox_mark() { printf '128\n'; }
 magicnet_dns_capture_singbox_udp_marked() { [ "${MARKED:-1}" = 1 ]; }
@@ -83,7 +90,8 @@ class DNSCaptureFastPath(unittest.TestCase):
                        MAGIC_DNS_CAPTURE="1", MAGIC_DNS_CAPTURE_PORT="1053")
             env.update(overrides)
             result = subprocess.run(shell + ["-c", FIXTURE], env=env,
-                                    capture_output=True, text=True, timeout=30)
+                                    stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                    universal_newlines=True, timeout=30)
             return result, [shlex.split(line) for line in calls.read_text().splitlines()]
 
     def test_rules_preserve_dns_and_bound_non_dns_work(self):
@@ -119,7 +127,8 @@ class DNSCaptureFastPath(unittest.TestCase):
 
     def test_ebpf_and_disabled_mode_do_not_install_capture(self):
         for shell, options in itertools.product(SHELLS, (
-                {"MODE": "ebpf"}, {"MAGIC_DNS_CAPTURE": "0"})):
+                {"MODE": "ebpf"}, {"MAGIC_DNS_CAPTURE": "0"},
+                {"MAGICNET_DNS_INTERCEPTION": "off"})):
             result, calls = self.run_installer(shell, **options)
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertFalse(any("-A" in call or "-I" in call for call in calls))

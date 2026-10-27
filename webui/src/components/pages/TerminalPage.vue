@@ -289,7 +289,7 @@ watch(executedList, () => {
 
 <template>
   <div class="terminal-page space-y-4">
-    <PageHeader title="终端">
+    <PageHeader :title="t('终端')">
       <div class="flex flex-wrap items-center gap-2">
         <Button
           variant="ghost"
@@ -330,15 +330,17 @@ watch(executedList, () => {
         <Terminal :size="13" aria-hidden="true" />
         {{ t("快捷命令") }}:
       </span>
-      <button
+      <Button
         v-for="cmd in quickCommands"
         :key="cmd"
-        type="button"
-        class="px-2.5 py-1 rounded-md font-mono bg-[var(--mn-surface)] border border-[var(--mn-border)] text-[var(--mn-ink)] hover:bg-[var(--mn-surface-elevated)] hover:border-[var(--mn-ink-muted)] transition-colors cursor-pointer"
+        size="sm"
+        variant="outline"
+        class="!min-h-8 !rounded-md !px-2.5 font-mono"
+        :disabled="executing || clearingHistory"
         @click="runCommandDirect(cmd)"
       >
         {{ cmd }}
-      </button>
+      </Button>
     </div>
 
     <!-- Main Terminal Card -->
@@ -370,7 +372,7 @@ watch(executedList, () => {
         <!-- Welcome Banner -->
         <div class="text-xs leading-5 text-zinc-500 pb-2 border-b border-zinc-800/60 select-none">
           <p class="font-bold text-zinc-400">MagicNet Interactive CLI Terminal</p>
-          <p>{{ t("按 Tab 或点击补全，按上下键切换历史") }} · 输入 clear 清屏</p>
+          <p>{{ t("按 Tab 或点击补全，按上下键切换历史") }} · {{ t("输入 clear 清屏") }}</p>
         </div>
 
         <div v-if="executedList.length === 0" class="text-xs text-zinc-600 italic py-2">
