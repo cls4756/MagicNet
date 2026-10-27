@@ -421,5 +421,6 @@ export default {
   "由 sing-box 自动测速，不需要手动切换。": ["Tested automatically by sing-box; no manual switching is needed.", "Автоматически проверяется sing-box; ручное переключение не требуется."],
   "自动测速组由 sing-box 自动选择": ["Automatic test groups are selected by sing-box", "Группы автотестирования выбираются sing-box"],
   "代理页面负责查看实际节点、策略组并切换当前节点。": ["The Proxy page shows actual nodes and groups and lets you switch the current node.", "На странице прокси показаны реальные узлы и группы, здесь можно сменить текущий узел."],
+  "订阅负责提供来源，代理页面负责查看实际节点、策略组并切换当前节点。": ["Subscriptions provide sources; the Proxy page shows actual nodes and groups and lets you switch the current node.", "Подписки предоставляют источники; на странице прокси показаны реальные узлы и группы, здесь можно сменить текущий узел."],
   "当前订阅接口不支持空列表，请至少保留一个来源；可以用导入文件切换到本地订阅。": ["The current subscription interface does not support an empty list. Keep at least one source, or import a file to switch to local subscriptions.", "Текущий интерфейс подписок не поддерживает пустой список. Оставьте хотя бы один источник или импортируйте файл для перехода на локальную подписку."],
 } as const;

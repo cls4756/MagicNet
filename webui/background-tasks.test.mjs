@@ -16,6 +16,8 @@ import {
 } from "./src/composables/backgroundTasks.ts";
 import { CLI, MODULE_DIR } from "./src/constants.ts";
 
+const POSIX_SHELL = "sh";
+
 const useMagicNetSource = readFileSync(
   new URL("./src/composables/useMagicNet.ts", import.meta.url),
   "utf8",
@@ -203,7 +205,7 @@ try {
   )
     .replaceAll(MODULE_DIR, launchFixture)
     .replaceAll(CLI, "/bin/true");
-  const setupFailure = spawnSync("/bin/sh", ["-c", setupFailureCommand], {
+  const setupFailure = spawnSync(POSIX_SHELL, ["-c", setupFailureCommand], {
     encoding: "utf8",
   });
   const setupOutput = `${setupFailure.stdout || ""}\n${setupFailure.stderr || ""}`;
@@ -240,7 +242,7 @@ try {
     ].join("\n"),
   );
   const logRead = spawnSync(
-    "/bin/sh",
+    POSIX_SHELL,
     ["-c", backgroundLogCommand(longLog, "sub update-all", firstId)],
     {
       encoding: "utf8",

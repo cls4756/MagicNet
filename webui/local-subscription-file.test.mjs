@@ -43,7 +43,7 @@ const launch = buildLocalSubscriptionApplyLaunch("magicnet-local-test.txt");
 assert.equal(launch.args, "webui payload apply-subscription-source 'magicnet-local-test.txt'");
 assert.doesNotMatch(launch.preview, /magicnet-local-test/);
 
-const page = readFileSync(new URL("./src/components/pages/SubscriptionsPage.vue", import.meta.url), "utf8");
+const page = readFileSync(new URL("./src/components/pages/SubscriptionsPage.vue", import.meta.url), "utf8").replaceAll("\r\n", "\n");
 const importHandler = page.match(/async function importLocalSubscriptions[\s\S]*?\n}\n\nfunction normalizeSubscriptions/)?.[0] ?? "";
 assert.match(importHandler, /startPrivateBackgroundCli/);
 assert.match(importHandler, /stagePrivatePayload/);

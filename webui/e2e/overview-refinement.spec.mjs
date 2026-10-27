@@ -113,18 +113,18 @@ for (const theme of ["light", "dark"]) {
       state.subscriptions.updateLockOwner = "none";
     });
     await expect(page.locator(".update-outcome")).toHaveText("更新成功");
-    await expect(page.locator(".source-state")).toHaveText("上次用量");
+    await expect(page.locator(".subscription-source-list .source-state")).toHaveText("上次用量");
     await fit(page);
     await page.screenshot({
       path: info.outputPath(`${theme}-subscriptions.png`),
       fullPage: true,
     });
-    await page.getByRole("button", { name: "管理来源", exact: true }).click();
-    await expect(page.locator(".source-textarea")).toBeFocused();
+    await page.getByRole("button", { name: "编辑来源", exact: true }).click();
+    await expect(page.locator(".source-row-input").first()).toBeFocused();
     await page.getByRole("button", { name: "取消", exact: true }).click();
-    await expect(page.locator(".source-textarea")).toHaveCount(0);
+    await expect(page.locator(".source-row-input")).toHaveCount(0);
     await expect(
-      page.getByRole("button", { name: "管理来源", exact: true }),
+      page.getByRole("button", { name: "管理订阅", exact: true }),
     ).toBeFocused();
     await page.evaluate(async () => {
       const { state } = (

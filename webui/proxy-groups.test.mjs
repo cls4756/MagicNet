@@ -9,6 +9,7 @@ test("native /proxies groups expose all members for selection and group testing"
       proxy: { type: "Selector", now: "auto", all: ["auto", "US node", "日本"] },
       auto: { type: "URLTest", now: "US node", all: ["US node", "日本"] },
       "US node": { type: "Shadowsocks", history: [] },
+      "日本": { type: "Shadowsocks", history: [] },
       direct: { type: "Direct" },
     },
   }));

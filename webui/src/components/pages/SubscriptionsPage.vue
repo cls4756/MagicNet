@@ -162,7 +162,7 @@ async function openEditor(): Promise<void> {
   editorOpen.value = true;
   await nextTick();
   editorPanel.value?.scrollIntoView({ block: "nearest" });
-  editorPanel.value?.querySelector("input")?.focus({ preventScroll: true });
+  document.querySelector<HTMLInputElement>(".source-row-input")?.focus({ preventScroll: true });
 }
 
 async function closeEditor(): Promise<void> {

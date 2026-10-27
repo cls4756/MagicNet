@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import postcss from "postcss";
 
-const read = (path) => readFileSync(new URL(path, import.meta.url), "utf8");
+const read = (path) => readFileSync(new URL(path, import.meta.url), "utf8").replaceAll("\r\n", "\n");
 const css = read("./src/styles.css");
 const header = read("./src/components/ui/PageHeader.vue");
 

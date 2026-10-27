@@ -58,7 +58,7 @@ function parseProxyGroup(
   if (!item) return null;
   const type = stringValue(item.type) || "provider";
   const kind = sourceKind === "provider" ? "provider" : proxyGroupKind(type);
-  if (sourceKind === "selector" && !isProxyGroupType(type)) return null;
+  if (sourceKind === "selector" && stringValue(item.type) && !isProxyGroupType(type)) return null;
   // /proxies selectors use `all`; provider responses use `proxies`.
   const members = Array.isArray(item.all) ? item.all : item.proxies;
   const proxies = Array.isArray(members)

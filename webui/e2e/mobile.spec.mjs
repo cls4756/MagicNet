@@ -6,13 +6,13 @@ const pages = [
   ["route", "apps", "应用名单"],
   ["route", "block", "拦截规则"],
   ["route", "chain", "链式代理"],
-  ["configure", "subs", "订阅"],
+  ["configure", "subs", "订阅管理"],
   ["configure", "config", "配置文件"],
   ["configure", "webui", "面板配置"],
-  ["settings", "dns", "DNS 配置"],
-  ["settings", "domain", "域名转发"],
-  ["settings", "warp", "WARP 出站"],
-  ["settings", "stack", "协议栈"],
+  ["configure", "dns", "DNS 配置"],
+  ["route", "domain", "域名转发"],
+  ["route", "warp", "WARP 出站"],
+  ["configure", "stack", "协议栈"],
   ["toolbox", "health", "诊断"],
   ["toolbox", "output", "最近输出"],
   ["toolbox", "tools", "维护"],
@@ -34,6 +34,9 @@ async function settle(page) {
 }
 
 async function navigate(page, workspace, tab, heading) {
+  await page.evaluate(() => {
+    if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+  });
   const desktopPage = page.locator(`.desktop-rail [data-tab="${tab}"]`);
   if (await desktopPage.isVisible()) {
     await desktopPage.click();
@@ -322,9 +325,10 @@ test("keyboard gives the field space and restores navigation after editing", asy
     page.viewportSize().width >= 980,
     "Desktop uses the side rail, not mobile keyboard navigation.",
   );
-  await navigate(page, "configure", "subs", "订阅");
+  await navigate(page, "configure", "subs", "订阅管理");
+  await page.getByRole("button", { name: "添加一行", exact: true }).click();
   const field = page.getByRole("textbox", {
-    name: "sing-box 订阅 URL，每行一个",
+    name: "订阅 1 URL",
   });
   const original = page.viewportSize();
   await field.fill("https://example.invalid/subscription");
@@ -344,7 +348,7 @@ test("keyboard gives the field space and restores navigation after editing", asy
   await field.blur();
   await expect(page.locator(".mobile-nav")).toBeVisible();
   await navigate(page, "run", "control", null);
-  await navigate(page, "configure", "subs", "订阅");
+  await navigate(page, "configure", "subs", "订阅管理");
   await expect(field).toHaveValue("https://example.invalid/subscription");
 });
 
