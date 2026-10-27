@@ -198,6 +198,7 @@ export const dnsDefaults: DnsState = {
   viaProxy: true,
   bootstrap: "aliyun",
   bootstrapTransport: "doh",
+  lan: { configured: false, effective: false, server: "", domains: [] },
 };
 
 export const warpDefaults: WarpState = {

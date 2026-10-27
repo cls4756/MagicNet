@@ -13,7 +13,7 @@ assert.equal(functions.length, names.length);
 const utilities = ts.createSourceFile("utils.ts", readFileSync(new URL("./src/utils.ts", import.meta.url), "utf8"), ts.ScriptTarget.Latest, true);
 const execFailed = utilities.statements.find((node) => ts.isFunctionDeclaration(node) && node.name?.text === "execFailed").getText(utilities).replace(/^export /, "");
 const code = ts.transpileModule(execFailed + "\n" + functions.map((node) => node.getText(source)).join("\n"), { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText;
-const dnsResponse = JSON.stringify({ schema: 1, ok: true, command: "dns.status", data: { profile: "default", primary: "bootstrap-local-dns", secondary: null, transport: "default", bootstrap_configured: "aliyun", bootstrap_transport: "doh" } });
+const dnsResponse = JSON.stringify({ schema: 1, ok: true, command: "dns.status", data: { profile: "default", primary: "bootstrap-local-dns", secondary: null, transport: "default", bootstrap_configured: "aliyun", bootstrap_transport: "doh", lan: { configured: false, effective: false, server: null, domains: [] } } });
 const networkResponse = JSON.stringify({ schema: 1, ok: true, command: "network.status", data: {
   configured: { ipv6_mode: "prefer_ipv4", mtu: 1400, udp_timeout: "5m" },
   effective: { ipv6_mode: "unavailable", stack: "unavailable", mtu: null, udp_timeout: "unavailable" },

@@ -267,7 +267,7 @@ export const CLI_COMMAND_TREE: readonly CommandDoc[] = [
   },
   {
     name: "dns",
-    syntax: "{status|set|bootstrap|test|apply}",
+    syntax: "{status|set|bootstrap|lan|test|apply}",
     description: "安全 DNS 上游服务器与防泄漏策略",
     children: [
       { name: "status", description: "查看当前 DNS 配置与防泄漏状态" },
@@ -289,6 +289,16 @@ export const CLI_COMMAND_TREE: readonly CommandDoc[] = [
         children: [
           { name: "status", description: "查看 Bootstrap DNS 设置" },
           { name: "set", syntax: "<system|aliyun|baidu|tencent>", description: "切换 Bootstrap DNS" },
+        ],
+      },
+      {
+        name: "lan",
+        syntax: "{status|set <gateway> <domain,...>|clear}",
+        description: "配置局域网域名使用的 DNS 网关",
+        children: [
+          { name: "status", description: "查看局域网 DNS 设置" },
+          { name: "set", syntax: "<gateway> <domain,...>", description: "保存局域网 DNS 网关和域名" },
+          { name: "clear", description: "清除局域网 DNS 设置" },
         ],
       },
       { name: "test", syntax: "[domain]", description: "测试指定域名的 DNS 解析延迟" },

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { t } from "@/i18n";
-import { computed, ref } from "vue";
+import { computed, ref, watch } from "vue";
 import { Copy, RadioTower, RefreshCw } from "lucide-vue-next";
 import Button from "@/components/ui/Button.vue";
 import Card from "@/components/ui/Card.vue";
@@ -36,7 +36,15 @@ const dnsProfiles = [
   "cloudflare-udp",
 ] as const;
 const bootstrapDnsOptions = ["system", "aliyun", "baidu", "tencent"] as const;
+const lanGateway = ref("");
+const lanDomains = ref("");
 const dnsSummary = computed(() => parseDnsTestSummary(dnsTestOutput.value, testedDomain.value));
+
+watch(() => state.dns.lan, (lan) => {
+  if (pendingDnsAction.value?.key.startsWith("dns-lan-")) return;
+  lanGateway.value = lan.server;
+  lanDomains.value = lan.domains.join(",");
+}, { deep: true, immediate: true });
 
 async function runSetDnsProfile(profile: string): Promise<void> {
   await withAction(`dns-${profile}`, async () => {
@@ -48,6 +56,23 @@ async function runSetDnsProfile(profile: string): Promise<void> {
 async function runSetBootstrapDns(bootstrap: string): Promise<void> {
   await withAction(`dns-bootstrap-${bootstrap}`, async () => {
     const text = await runCli(`dns bootstrap set ${shellQuote(bootstrap)}`, t("切换 Bootstrap DNS {bootstrap}", { bootstrap }));
+    if (!execFailed(text)) await refreshDnsStatus(true);
+  });
+}
+
+async function runSetLanDns(gateway: string, domains: string[]): Promise<void> {
+  await withAction("dns-lan-set", async () => {
+    const text = await runCli(
+      `dns lan set ${shellQuote(gateway)} ${shellQuote(domains.join(","))}`,
+      t("保存局域网 DNS"),
+    );
+    if (!execFailed(text)) await refreshDnsStatus(true);
+  });
+}
+
+async function runClearLanDns(): Promise<void> {
+  await withAction("dns-lan-clear", async () => {
+    const text = await runCli("dns lan clear", t("清除局域网 DNS"));
     if (!execFailed(text)) await refreshDnsStatus(true);
   });
 }
@@ -82,6 +107,36 @@ function setBootstrapDns(bootstrap: string): void {
     get detail() { return t("Bootstrap DNS 用于默认本地解析和代理节点域名解析；保存后会重新生成配置并重启 sing-box。"); },
     command: `dns bootstrap set ${bootstrap}`,
     run: () => runSetBootstrapDns(bootstrap)
+  };
+}
+
+function setLanDns(): void {
+  const gateway = lanGateway.value.trim();
+  const domains = normalizeLanDomains(lanDomains.value);
+  if (!gateway || !domains.length) {
+    state.output = t("请输入局域网 DNS 网关和至少一个域名后缀。");
+    return;
+  }
+  pendingDnsProfile.value = "";
+  dnsPlanCopied.value = false;
+  pendingDnsAction.value = {
+    key: "dns-lan-set",
+    get title() { return t("保存局域网 DNS"); },
+    get detail() { return t("局域网域名会优先通过指定网关解析，并直接连接局域网地址。"); },
+    command: `dns lan set ${gateway} ${domains.join(",")}`,
+    run: () => runSetLanDns(gateway, domains),
+  };
+}
+
+function clearLanDns(): void {
+  pendingDnsProfile.value = "";
+  dnsPlanCopied.value = false;
+  pendingDnsAction.value = {
+    key: "dns-lan-clear",
+    get title() { return t("清除局域网 DNS"); },
+    get detail() { return t("局域网域名会优先通过指定网关解析，并直接连接局域网地址。"); },
+    command: "dns lan clear",
+    run: runClearLanDns,
   };
 }
 
@@ -150,6 +205,15 @@ function normalizeDomain(value: string): string {
   ));
   return valid ? domain : "";
 }
+
+function normalizeLanDomains(value: string): string[] {
+  const domains = value.split(",").map((item) => item.trim().replace(/^\.+|\.+$/g, "").toLowerCase()).filter(Boolean);
+  if (domains.length === 0 || domains.length > 64) return [];
+  const valid = domains.every((domain) => domain.length <= 253 && domain.split(".").every((label) => (
+    label.length > 0 && label.length <= 63 && !label.startsWith("-") && !label.endsWith("-") && /^[a-z0-9-]+$/.test(label)
+  )));
+  return valid ? [...new Set(domains)] : [];
+}
 </script>
 
 <template>
@@ -208,6 +272,34 @@ function normalizeDomain(value: string): string {
           <option value="tencent">{{ t("腾讯 DNSPod 公共 DNS") }}</option>
         </select>
       </label>
+    </div>
+    <div class="grid gap-3 rounded-md border border-[color-mix(in_srgb,var(--mn-ink)_10%,transparent)] p-3">
+      <div>
+        <p class="text-sm font-semibold text-[var(--mn-ink)]">{{ t("局域网 DNS") }}</p>
+        <p class="mt-1 text-xs leading-5 text-[var(--mn-ink-muted)]">{{ t("局域网域名会优先通过指定网关解析，并直接连接局域网地址。") }}</p>
+      </div>
+      <div class="grid gap-3 sm:grid-cols-2">
+        <label class="grid gap-1 text-xs text-[var(--mn-ink-muted)]">
+          <span>{{ t("局域网 DNS 网关") }}</span>
+          <Input v-model="lanGateway" placeholder="192.168.1.1" spellcheck="false" />
+          <span class="text-[10px] opacity-70">{{ t("例如 192.168.1.1；多个域名用逗号分隔") }}</span>
+        </label>
+        <label class="grid gap-1 text-xs text-[var(--mn-ink-muted)]">
+          <span>{{ t("局域网域名后缀") }}</span>
+          <Input v-model="lanDomains" placeholder="router.lan,nas.home.arpa" spellcheck="false" />
+          <span class="text-[10px] opacity-70">{{ t("例如 router.lan,nas.home.arpa") }}</span>
+        </label>
+      </div>
+      <div class="flex flex-wrap items-center justify-between gap-2">
+        <span class="text-xs text-[var(--mn-ink-muted)]">
+          {{ state.dns.lan.configured ? t("局域网 DNS 已启用：{count} 个域名", { count: state.dns.lan.domains.length }) : t("未启用") }}
+          <span v-if="state.dns.lan.configured" class="ml-1">({{ state.dns.lan.effective ? t("已生效") : t("待应用") }})</span>
+        </span>
+        <div class="flex flex-wrap gap-2">
+          <Button size="sm" variant="outline" :loading="isRunning('dns-lan-set')" @click="setLanDns">{{ t("保存局域网 DNS") }}</Button>
+          <Button size="sm" variant="ghost" :loading="isRunning('dns-lan-clear')" :disabled="!state.dns.lan.configured" @click="clearLanDns">{{ t("清除局域网 DNS") }}</Button>
+        </div>
+      </div>
     </div>
     <div class="flex justify-end">
       <Button variant="secondary" :loading="isRunning('dns-refresh')" @click="withAction('dns-refresh', refreshDnsState)">

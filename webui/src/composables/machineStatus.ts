@@ -84,6 +84,7 @@ export function parseMachineDns(text: string): DnsState | null {
     "quad9-doh", "quad9-doh-direct",
   ];
   const validBootstrap = ["system", "aliyun", "baidu", "tencent"];
+  const lan = isRecord(data?.lan) ? data.lan : null;
   if (!data || typeof data.profile !== "string" ||
     !validProfiles.includes(data.profile) ||
     typeof data.primary !== "string" || !data.primary ||
@@ -91,10 +92,16 @@ export function parseMachineDns(text: string): DnsState | null {
     typeof data.transport !== "string" || !["default", "doh", "dot", "udp"].includes(data.transport) ||
     (typeof data.via_proxy !== "boolean" && data.via_proxy !== null && data.via_proxy !== undefined) ||
     typeof data.bootstrap_configured !== "string" || !validBootstrap.includes(data.bootstrap_configured) ||
-    typeof data.bootstrap_transport !== "string" || !["doh", "udp"].includes(data.bootstrap_transport) ||
-    (["system", "baidu"].includes(data.bootstrap_configured) ? data.bootstrap_transport !== "udp"
-      : data.bootstrap_transport !== "doh")
-  ) return null;
+     typeof data.bootstrap_transport !== "string" || !["doh", "udp"].includes(data.bootstrap_transport) ||
+     (["system", "baidu"].includes(data.bootstrap_configured) ? data.bootstrap_transport !== "udp"
+       : data.bootstrap_transport !== "doh") ||
+     !lan || typeof lan.configured !== "boolean" || typeof lan.effective !== "boolean" ||
+     (lan.server !== null && typeof lan.server !== "string") ||
+     !Array.isArray(lan.domains) || lan.domains.some((domain) => typeof domain !== "string") ||
+     (lan.configured && (typeof lan.server !== "string" || !lan.server || lan.domains.length === 0)) ||
+     (!lan.configured && ((lan.server !== null && lan.server !== "") || lan.domains.length > 0)) ||
+     (lan.effective && !lan.configured)
+   ) return null;
   return {
     profile: data.profile as DnsState["profile"],
     primary: data.primary,
@@ -103,6 +110,12 @@ export function parseMachineDns(text: string): DnsState | null {
     viaProxy: data.via_proxy !== null && data.via_proxy !== undefined ? Boolean(data.via_proxy) : true,
     bootstrap: data.bootstrap_configured as DnsState["bootstrap"],
     bootstrapTransport: data.bootstrap_transport as DnsState["bootstrapTransport"],
+    lan: {
+      configured: lan.configured,
+      effective: lan.effective,
+      server: typeof lan.server === "string" ? lan.server : "",
+      domains: lan.domains as string[],
+    },
   };
 }
 

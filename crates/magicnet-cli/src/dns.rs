@@ -1,4 +1,5 @@
 use std::fs;
+use std::net::IpAddr;
 use std::path::Path;
 use std::process::Command;
 
@@ -8,6 +9,12 @@ use crate::{read_kv, run_magicnet_function, write_text_file, App};
 const DNS_CONF: &str = ".config/magicnet/dns.conf";
 const DNS_TEST_PROXY: &str = "http://127.0.0.1:7892";
 
+#[derive(Clone, Debug, Default)]
+pub(crate) struct LanDnsConfig {
+    pub(crate) server: Option<String>,
+    pub(crate) domains: Vec<String>,
+}
+
 pub(crate) fn dns_cmd(app: &App, args: &[String]) -> Result<(), String> {
     match args.first().map(String::as_str).unwrap_or("status") {
         "status" => {
@@ -16,6 +23,7 @@ pub(crate) fn dns_cmd(app: &App, args: &[String]) -> Result<(), String> {
         }
         "set" => dns_set(app, args.get(1).map(String::as_str).unwrap_or_default()),
         "bootstrap" => dns_bootstrap_cmd(app, &args[1..]),
+        "lan" => dns_lan_cmd(app, &args[1..]),
         "test" => dns_test(args.get(1).map(String::as_str).unwrap_or("www.gstatic.com")),
         "apply" => {
             run_magicnet_function(app, "magicnet_dns_apply")?;
@@ -75,6 +83,12 @@ fn dns_status(app: &App) {
     println!("via_proxy={}", if via_proxy { "true" } else { "false" });
     println!("bootstrap={bootstrap}");
     println!("bootstrap_transport={}", bootstrap_transport(&bootstrap));
+    let lan = dns_lan_config(app);
+    println!("lan_dns_server={}", lan.server.as_deref().unwrap_or("none"));
+    println!("lan_domain_count={}", lan.domains.len());
+    if !lan.domains.is_empty() {
+        println!("lan_domains={}", lan.domains.join(","));
+    }
     match profile.as_str() {
         "cloudflare-udp" | "cloudflare-udp-direct" => {
             println!("primary=1.1.1.1");
@@ -120,7 +134,7 @@ fn dns_status(app: &App) {
 
 fn dns_set(app: &App, profile: &str) -> Result<(), String> {
     let profile = normalize_profile(profile)?;
-    update_dns_config(app, Some(profile), None)?;
+    update_dns_config(app, Some(profile), None, None)?;
     println!("[info] DNS profile set to {profile}");
     Ok(())
 }
@@ -135,8 +149,37 @@ fn dns_bootstrap_cmd(app: &App, args: &[String]) -> Result<(), String> {
         }
         "set" => {
             let bootstrap = normalize_bootstrap(args.get(1).map(String::as_str).unwrap_or_default())?;
-            update_dns_config(app, None, Some(bootstrap))?;
+            update_dns_config(app, None, Some(bootstrap), None)?;
             println!("[info] Bootstrap DNS set to {bootstrap}");
+            Ok(())
+        }
+        _ => Err(dns_usage()),
+    }
+}
+
+fn dns_lan_cmd(app: &App, args: &[String]) -> Result<(), String> {
+    match args.first().map(String::as_str).unwrap_or("status") {
+        "status" if args.len() <= 1 => {
+            let lan = dns_lan_config(app);
+            println!("server={}", lan.server.as_deref().unwrap_or("none"));
+            println!("domain_count={}", lan.domains.len());
+            if !lan.domains.is_empty() {
+                println!("domains={}", lan.domains.join(","));
+            }
+            Ok(())
+        }
+        "set" if args.len() >= 3 => {
+            let config = LanDnsConfig {
+                server: Some(normalize_lan_server(&args[1])?),
+                domains: normalize_lan_domains(&args[2..].join(","))?,
+            };
+            update_dns_config(app, None, None, Some(&config))?;
+            println!("[info] LAN DNS configured for {} domain(s)", config.domains.len());
+            Ok(())
+        }
+        "clear" if args.len() == 1 => {
+            update_dns_config(app, None, None, Some(&LanDnsConfig::default()))?;
+            println!("[info] LAN DNS configuration cleared");
             Ok(())
         }
         _ => Err(dns_usage()),
@@ -147,6 +190,7 @@ fn update_dns_config(
     app: &App,
     profile: Option<&str>,
     bootstrap: Option<&str>,
+    lan_override: Option<&LanDnsConfig>,
 ) -> Result<(), String> {
     let path = app.moddir.join(DNS_CONF);
     let previous = fs::read(&path).ok();
@@ -157,14 +201,21 @@ fn update_dns_config(
     let bootstrap = bootstrap
         .map(ToOwned::to_owned)
         .unwrap_or_else(|| dns_bootstrap(app));
+    let lan = lan_override
+        .cloned()
+        .unwrap_or_else(|| dns_lan_config(app));
     let via_proxy = values
         .get("MAGICNET_DNS_VIA_PROXY")
         .map(String::as_str)
         .filter(|value| matches!(*value, "0" | "1"))
         .unwrap_or("1");
-    let text = format!(
+    let mut text = format!(
         "MAGICNET_DNS_PROFILE={profile}\nMAGICNET_BOOTSTRAP_DNS={bootstrap}\nMAGICNET_DNS_VIA_PROXY={via_proxy}\n"
     );
+    if let Some(server) = lan.server.as_deref() {
+        text.push_str(&format!("MAGICNET_LAN_DNS_SERVER={server}\n"));
+        text.push_str(&format!("MAGICNET_LAN_DNS_DOMAINS={}\n", lan.domains.join(",")));
+    }
     write_text_file(app, Path::new(DNS_CONF), &text)?;
     if let Err(error) = run_magicnet_function(app, "magicnet_dns_apply") {
         restore_dns_config(app, previous.as_deref())?;
@@ -261,6 +312,74 @@ fn dns_bootstrap(app: &App) -> String {
         .unwrap_or_else(|| "aliyun".to_string())
 }
 
+pub(crate) fn dns_lan_config(app: &App) -> LanDnsConfig {
+    let values = read_kv(app.moddir.join(DNS_CONF));
+    let Some(server) = values
+        .get("MAGICNET_LAN_DNS_SERVER")
+        .and_then(|value| normalize_lan_server(value).ok())
+    else {
+        return LanDnsConfig::default();
+    };
+    let Some(domains) = values
+        .get("MAGICNET_LAN_DNS_DOMAINS")
+        .and_then(|value| normalize_lan_domains(value).ok())
+        .filter(|domains| !domains.is_empty())
+    else {
+        return LanDnsConfig::default();
+    };
+    LanDnsConfig {
+        server: Some(server),
+        domains,
+    }
+}
+
+pub(crate) fn normalize_lan_server(server: &str) -> Result<String, String> {
+    let address = server.trim().parse::<IpAddr>().map_err(|_| {
+        "LAN DNS gateway must be a valid private or link-local IP address".to_string()
+    })?;
+    let is_lan = match address {
+        IpAddr::V4(address) => address.is_private() || address.is_link_local(),
+        IpAddr::V6(address) => {
+            let octets = address.octets();
+            (octets[0] & 0xfe) == 0xfc
+                || (octets[0] == 0xfe && (octets[1] & 0xc0) == 0x80)
+        }
+    };
+    if !is_lan || address.is_loopback() || address.is_unspecified() || address.is_multicast() {
+        return Err("LAN DNS gateway must be a valid private or link-local IP address".to_string());
+    }
+    Ok(address.to_string())
+}
+
+pub(crate) fn normalize_lan_domains(value: &str) -> Result<Vec<String>, String> {
+    let mut domains = Vec::new();
+    for raw in value.split([',', ';']) {
+        let domain = raw.trim().trim_matches('.').to_ascii_lowercase();
+        if domain.is_empty() || domain.len() > 253 || !valid_lan_domain(&domain) {
+            return Err("LAN DNS domains must be comma-separated DNS suffixes".to_string());
+        }
+        if !domains.contains(&domain) {
+            domains.push(domain);
+        }
+    }
+    if domains.is_empty() || domains.len() > 64 {
+        return Err("LAN DNS domains must contain between 1 and 64 entries".to_string());
+    }
+    Ok(domains)
+}
+
+fn valid_lan_domain(domain: &str) -> bool {
+    domain.split('.').all(|label| {
+        !label.is_empty()
+            && label.len() <= 63
+            && !label.starts_with('-')
+            && !label.ends_with('-')
+            && label
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
+    })
+}
+
 fn dns_via_proxy(app: &App, profile: &str) -> bool {
     if profile.ends_with("-direct") {
         return false;
@@ -281,7 +400,7 @@ fn bootstrap_transport(bootstrap: &str) -> &'static str {
 }
 
 fn dns_usage() -> String {
-    "Usage: cli dns {status|set <profile>|bootstrap {status|set <system|aliyun|baidu|tencent>}|test [domain]|apply}\n\
+    "Usage: cli dns {status|set <profile>|bootstrap {status|set <system|aliyun|baidu|tencent>}|lan {status|set <gateway> <domain,...>|clear}|test [domain]|apply}\n\
      Available profiles:\n\
      - default\n\
      - cloudflare-doh [direct: cloudflare-doh-direct]\n\
@@ -297,7 +416,10 @@ fn dns_usage() -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{dns_test_curl_args, normalize_bootstrap, normalize_test_domain, DNS_TEST_PROXY};
+    use super::{
+        dns_test_curl_args, normalize_bootstrap, normalize_lan_domains, normalize_lan_server,
+        normalize_test_domain, DNS_TEST_PROXY,
+    };
 
     #[test]
     fn dns_test_domain_rejects_urls_and_shell_fragments() {
@@ -329,5 +451,16 @@ mod tests {
         assert_eq!(normalize_bootstrap("baidudns").unwrap(), "baidu");
         assert_eq!(normalize_bootstrap("dnspod").unwrap(), "tencent");
         assert!(normalize_bootstrap("cloudflare").is_err());
+    }
+
+    #[test]
+    fn lan_dns_accepts_private_gateways_and_normalizes_suffixes() {
+        assert_eq!(normalize_lan_server("192.168.1.1").unwrap(), "192.168.1.1");
+        assert_eq!(
+            normalize_lan_domains(".Router.LAN,nas.home.arpa,router.lan").unwrap(),
+            vec!["router.lan", "nas.home.arpa"]
+        );
+        assert!(normalize_lan_server("8.8.8.8").is_err());
+        assert!(normalize_lan_domains("bad domain").is_err());
     }
 }

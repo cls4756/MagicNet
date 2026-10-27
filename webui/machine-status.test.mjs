@@ -3,7 +3,7 @@ import test from "node:test";
 import { decodeMachineData, machineErrorCode, machineFailureText, parseMachineDns, parseMachineDomainForward, parseMachineNetwork, parseMachineRuntime } from "./src/composables/machineStatus.ts";
 
 const envelope = (command, data) => JSON.stringify({ schema: 1, ok: true, command, data });
-const dns = { profile: "default", primary: "bootstrap-local-dns", secondary: null, transport: "default", via_proxy: false, bootstrap_configured: "aliyun", bootstrap_transport: "doh" };
+const dns = { profile: "default", primary: "bootstrap-local-dns", secondary: null, transport: "default", via_proxy: false, bootstrap_configured: "aliyun", bootstrap_transport: "doh", lan: { configured: false, effective: false, server: null, domains: [] } };
 const network = {
   configured: { ipv6_mode: "prefer_ipv4", mtu: 1400, udp_timeout: "5m" },
   effective: { ipv6_mode: "ipv4_only", stack: "mixed", mtu: 1280, udp_timeout: "3m" },
@@ -36,7 +36,7 @@ test("unsupported machine commands stay errors rather than enabling legacy fallb
 });
 
 test("DNS shape validation is shared and nullable secondary clears stale values", () => {
-  assert.deepEqual(parseMachineDns(envelope("dns.status", dns)), { profile: dns.profile, primary: dns.primary, secondary: "", transport: dns.transport, viaProxy: dns.via_proxy, bootstrap: "aliyun", bootstrapTransport: "doh" });
+  assert.deepEqual(parseMachineDns(envelope("dns.status", dns)), { profile: dns.profile, primary: dns.primary, secondary: "", transport: dns.transport, viaProxy: dns.via_proxy, bootstrap: "aliyun", bootstrapTransport: "doh", lan: { configured: false, effective: false, server: "", domains: [] } });
   for (const invalid of [{}, { ...dns, profile: "unsupported" }, { ...dns, primary: null },
     { ...dns, secondary: false }, { ...dns, transport: "quic" }]) {
     assert.equal(parseMachineDns(envelope("dns.status", invalid)), null);

@@ -9,6 +9,7 @@ use chacha20poly1305::{
 };
 
 use crate::config_editor::validate_repository_config_text;
+use crate::dns::{normalize_lan_domains, normalize_lan_server};
 use crate::subscriptions::{
     normalize_subscription_filter_text, validate_subscription_url, validate_subscription_user_agent,
 };
@@ -405,6 +406,12 @@ fn sourced_conf_value_is_allowed(rel: &str, key: &str, value: &str) -> bool {
         }
         (".config/magicnet/dns.conf", "MAGICNET_BOOTSTRAP_DNS") => {
             matches!(value, "system" | "aliyun" | "baidu" | "tencent")
+        }
+        (".config/magicnet/dns.conf", "MAGICNET_LAN_DNS_SERVER") => {
+            normalize_lan_server(value).is_ok()
+        }
+        (".config/magicnet/dns.conf", "MAGICNET_LAN_DNS_DOMAINS") => {
+            normalize_lan_domains(value).is_ok()
         }
         (".config/magicnet/warp.conf", "MAGICNET_WARP_ENABLED") => {
             matches!(

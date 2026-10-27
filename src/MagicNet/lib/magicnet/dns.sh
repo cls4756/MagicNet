@@ -39,6 +39,24 @@ magicnet_dns_bootstrap() {
     unset _bootstrap
 }
 
+magicnet_dns_lan_server() {
+    _lan_server="${MAGICNET_LAN_DNS_SERVER:-}"
+    if [ -z "$_lan_server" ]; then
+        _lan_server="$(magicnet_conf_value "$(magicnet_dns_conf)" MAGICNET_LAN_DNS_SERVER 2>/dev/null || true)"
+    fi
+    printf '%s\n' "$_lan_server"
+    unset _lan_server
+}
+
+magicnet_dns_lan_domains() {
+    _lan_domains="${MAGICNET_LAN_DNS_DOMAINS:-}"
+    if [ -z "$_lan_domains" ]; then
+        _lan_domains="$(magicnet_conf_value "$(magicnet_dns_conf)" MAGICNET_LAN_DNS_DOMAINS 2>/dev/null || true)"
+    fi
+    printf '%s\n' "$_lan_domains"
+    unset _lan_domains
+}
+
 magicnet_dns_normalize_server_addresses() {
     awk '
       {
@@ -186,9 +204,50 @@ magicnet_dns_apply_singbox() {
     0 | false | no | off) _via_proxy=0 ;;
     *) _via_proxy=1 ;;
     esac
+    _lan_server="$(magicnet_dns_lan_server)"
+    _lan_domains="$(magicnet_dns_lan_domains)"
+    _lan_domains_json='[]'
+    if [ -n "$_lan_server" ] || [ -n "$_lan_domains" ]; then
+        [ -n "$_lan_server" ] && [ -n "$_lan_domains" ] || {
+            magicnet_warn "LAN DNS server and domains must be configured together"
+            unset _profile _bootstrap _bootstrap_server _bootstrap_type _bootstrap_sni _config _jq _via_proxy
+            unset _lan_server _lan_domains _lan_domains_json
+            return 1
+        }
+        case "$_lan_server" in
+        *[!0-9A-Fa-f:.%]* | *[[:space:]]*)
+            magicnet_warn "LAN DNS server must be an IP address"
+            unset _profile _bootstrap _bootstrap_server _bootstrap_type _bootstrap_sni _config _jq _via_proxy
+            unset _lan_server _lan_domains _lan_domains_json
+            return 1
+            ;;
+        esac
+        _lan_domains_json="$($_jq -nr --arg raw "$_lan_domains" '
+          def normalize:
+            gsub("^[[:space:]]+|[[:space:]]+$"; "")
+            | sub("^\\."; "")
+            | sub("\\.$"; "")
+            | ascii_downcase;
+          ($raw | split(",") | map(normalize)
+            | reduce .[] as $item ([]; if index($item) == null then . + [$item] else . end)) as $domains
+          | if ($domains | length) > 0
+              and ($domains | all(. | length <= 253))
+              and ($domains | all(. | test("^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*$")))
+              and ($domains | length <= 64)
+            then $domains
+            else error("invalid LAN DNS domain list")
+            end
+        ' 2>/dev/null)" || {
+            magicnet_warn "LAN DNS domains are invalid"
+            unset _profile _bootstrap _bootstrap_server _bootstrap_type _bootstrap_sni _config _jq _via_proxy
+            unset _lan_server _lan_domains _lan_domains_json
+            return 1
+        }
+    fi
     _tmp="${_config}.magicnet-dns.new"
     magicnet_jq_install_config "$_config" "$_tmp" "$_jq" --arg profile "$_profile" --arg bootstrap "$_bootstrap" \
         --arg bootstrap_server "$_bootstrap_server" --arg bootstrap_type "$_bootstrap_type" --arg bootstrap_sni "$_bootstrap_sni" \
+        --arg lan_server "$_lan_server" --argjson lan_domains "$_lan_domains_json" \
         --argjson dns_capture_singbox_mark "$(magicnet_dns_capture_singbox_mark)" --argjson via_proxy "$_via_proxy" -e '
       # Build a DNS server definition for a given provider and transport.
       # When via_proxy is true, the server uses detour:"proxy" so queries
@@ -232,6 +291,7 @@ magicnet_dns_apply_singbox() {
          "cloudflare-profile-dns","cloudflare-backup-dns",
          "google-profile-dns","google-backup-dns","adguard-profile-dns","adguard-backup-dns",
          "quad9-profile-dns","quad9-backup-dns"];
+      def lan_dns_tag: "magicnet-lan-dns";
       def rewrite_rule_tags:
         ["default-remote-dns","doh-cloudflare","doh-google",
          "cloudflare-profile-dns","cloudflare-backup-dns","google-profile-dns","google-backup-dns",
@@ -261,7 +321,7 @@ magicnet_dns_apply_singbox() {
         end;
       .dns.servers = (
         (.dns.servers // [])
-        | map(select((.tag // "") as $tag | managed_tags | index($tag) | not))
+        | map(select((.tag // "") as $tag | ((managed_tags | index($tag)) == null and $tag != lan_dns_tag)))
         | (if $profile == "default" then [default_bootstrap]
            else
              (provider_for($profile) | . as $provider |
@@ -270,8 +330,12 @@ magicnet_dns_apply_singbox() {
                 build_server($transport; ($provider.tag_prefix + "-profile-dns"); $provider.primary; $provider; $dns_capture_singbox_mark),
                 (if $provider.secondary then build_server($transport; ($provider.tag_prefix + "-backup-dns"); $provider.secondary; $provider; $dns_capture_singbox_mark) else empty end)
                ]))
-           end) + .
-      )
+            end) + .
+       )
+       | if ($lan_domains | length) > 0 then
+           .dns.servers = [{"type":"udp","tag":lan_dns_tag,"server":$lan_server,"server_port":53,"routing_mark":$dns_capture_singbox_mark}] + .dns.servers
+         else .
+         end
       # Direct UDP DNS servers are contacted by sing-box itself. Mark those
       # sockets so the kernel DNS redirect can exempt them without exempting
       # every UID-0 Android resolver query.
@@ -281,12 +345,15 @@ magicnet_dns_apply_singbox() {
           else .
           end
         )
-      | .dns.rules = ((.dns.rules // []) | map(
-          if ((.server // "") as $server | rewrite_rule_tags | index($server)) != null
-          then .server = profile_dns_tag
-          else .
-          end
-        ))
+       | .dns.rules = ((.dns.rules // []) | map(select((.server // "") != lan_dns_tag)) | map(
+           if ((.server // "") as $server | rewrite_rule_tags | index($server)) != null
+           then .server = profile_dns_tag
+           else .
+           end
+         ) | if ($lan_domains | length) > 0 then
+               [{"domain_suffix":$lan_domains,"server":lan_dns_tag}] + .
+             else .
+             end)
       # route.default_domain_resolver remains bootstrap-local-dns for proxy
       # node hostnames; using a proxy-detoured profile there would recurse.
       | .dns.final = profile_dns_tag
@@ -309,6 +376,7 @@ magicnet_dns_apply_singbox() {
     ' "$_config"
     _rc=$?
     unset _profile _bootstrap _bootstrap_server _bootstrap_type _bootstrap_sni _config _jq _tmp _via_proxy
+    unset _lan_server _lan_domains _lan_domains_json
     return "$_rc"
 }
 

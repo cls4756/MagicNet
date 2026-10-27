@@ -115,6 +115,12 @@ export type DnsState = {
   viaProxy: boolean;
   bootstrap: "system" | "aliyun" | "baidu" | "tencent";
   bootstrapTransport: "doh" | "udp";
+  lan: {
+    configured: boolean;
+    effective: boolean;
+    server: string;
+    domains: string[];
+  };
 };
 
 export type WarpState = {

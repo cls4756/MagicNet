@@ -7,6 +7,7 @@ use crate::{
     clean_module_lines, diagnostics::supervisor_pid, read_kv, service::singbox_webui,
     singbox_pid_summary, webui_api::current_clash_mode, App,
 };
+use crate::dns::dns_lan_config;
 
 mod subscription;
 mod transparent;
@@ -157,7 +158,8 @@ fn capabilities_value() -> Value {
                 "redacted_status",
                 "configured_effective_split",
                 "privacy_safe_network_identifiers",
-                "readiness_signals"
+                "readiness_signals",
+                "lan_dns_routing"
             ],
             "private_commands": ["sub.inspect", "wifi.inspect"],
             "json_flag_positions": ["prefix", "suffix"],
@@ -250,6 +252,9 @@ fn dns_status_value(app: &App) -> Value {
     let profile = dns_profile(app);
     let bootstrap_configured = dns_bootstrap(app);
     let via_proxy = dns_via_proxy(app, &profile);
+    let lan = dns_lan_config(app);
+    let lan_configured = lan.server.is_some() && !lan.domains.is_empty();
+    let lan_effective = lan_configured && lan_dns_effective(app, &lan);
     let (primary, secondary, transport) = match profile.as_str() {
         "cloudflare-udp" | "cloudflare-udp-direct" => ("1.1.1.1", Some("1.0.0.1"), "udp"),
         "cloudflare-dot" | "cloudflare-dot-direct" => ("tls://1.1.1.1", Some("tls://1.0.0.1"), "dot"),
@@ -286,8 +291,55 @@ fn dns_status_value(app: &App) -> Value {
             "via_proxy": via_proxy,
             "bootstrap_configured": bootstrap_configured,
             "bootstrap_transport": bootstrap_transport(&bootstrap_configured),
+            "lan": {
+                "configured": lan_configured,
+                "effective": lan_effective,
+                "server": lan.server,
+                "domains": lan.domains,
+            },
         }),
     )
+}
+
+fn lan_dns_effective(app: &App, configured: &crate::dns::LanDnsConfig) -> bool {
+    let Some(config) = crate::utils::read_json_file_bounded(
+        &app.moddir.join(SINGBOX_CONFIG),
+        4 * 1024 * 1024,
+    ) else {
+        return false;
+    };
+    let server_ready = config
+        .get("dns")
+        .and_then(|dns| dns.get("servers"))
+        .and_then(Value::as_array)
+        .is_some_and(|servers| {
+            servers.iter().any(|server| {
+                server.get("tag").and_then(Value::as_str) == Some("magicnet-lan-dns")
+                    && server.get("server").and_then(Value::as_str)
+                        == configured.server.as_deref()
+                    && server.get("type").and_then(Value::as_str) == Some("udp")
+                    && server.get("server_port").and_then(Value::as_u64) == Some(53)
+            })
+        });
+    let rule_ready = config
+        .get("dns")
+        .and_then(|dns| dns.get("rules"))
+        .and_then(Value::as_array)
+        .is_some_and(|rules| {
+            rules.iter().any(|rule| {
+                rule.get("server").and_then(Value::as_str) == Some("magicnet-lan-dns")
+                    && rule
+                        .get("domain_suffix")
+                        .and_then(Value::as_array)
+                        .is_some_and(|domains| {
+                            domains.len() == configured.domains.len()
+                                && domains.iter().zip(&configured.domains).all(
+                                    |(domain, expected)| domain.as_str() == Some(expected.as_str()),
+                                )
+                        })
+            })
+        });
+    server_ready && rule_ready
 }
 
 fn network_status_value(app: &App) -> Value {
@@ -885,9 +937,14 @@ mod tests {
         let (root, app) = fixture();
         fs::write(
             root.join(".config/magicnet/dns.conf"),
-            "MAGICNET_DNS_PROFILE=doh\nMAGICNET_BOOTSTRAP_DNS=system\nMAGICNET_DNS_VIA_PROXY=0\nIGNORED_SECRET=do-not-return\n",
+            "MAGICNET_DNS_PROFILE=doh\nMAGICNET_BOOTSTRAP_DNS=system\nMAGICNET_DNS_VIA_PROXY=0\nMAGICNET_LAN_DNS_SERVER=192.168.50.1\nMAGICNET_LAN_DNS_DOMAINS=router.lan,nas.home.arpa\nIGNORED_SECRET=do-not-return\n",
         )
         .expect("write dns config");
+        fs::write(
+            root.join(".config/sing-box/config.json"),
+            r#"{"dns":{"servers":[{"type":"udp","tag":"magicnet-lan-dns","server":"192.168.50.1","server_port":53}],"rules":[{"domain_suffix":["router.lan","nas.home.arpa"],"server":"magicnet-lan-dns"}]}}"#,
+        )
+        .expect("write effective LAN DNS config");
         let value = dns_status_value(&app);
         assert_eq!(value["command"], "dns.status");
         assert_eq!(value["data"]["profile"], "cloudflare-doh");
@@ -895,6 +952,10 @@ mod tests {
         assert_eq!(value["data"]["via_proxy"], false);
         assert_eq!(value["data"]["bootstrap_configured"], "system");
         assert_eq!(value["data"]["bootstrap_transport"], "udp");
+        assert_eq!(value["data"]["lan"]["configured"], true);
+        assert_eq!(value["data"]["lan"]["effective"], true);
+        assert_eq!(value["data"]["lan"]["server"], "192.168.50.1");
+        assert_eq!(value["data"]["lan"]["domains"], serde_json::json!(["router.lan", "nas.home.arpa"]));
         assert!(!value.to_string().contains("do-not-return"));
         fs::remove_dir_all(root).expect("remove fixture");
     }

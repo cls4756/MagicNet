@@ -24,7 +24,7 @@ esac
 
 MODDIR="$WORK/module"
 export MODDIR
-mkdir -p "$MODDIR/.config/sing-box" "$MODDIR/bin"
+mkdir -p "$MODDIR/.config/sing-box" "$MODDIR/.config/magicnet" "$MODDIR/bin"
 ln -s "$(command -v jq)" "$MODDIR/bin/jq"
 
 cat >"$MODDIR/.config/sing-box/config.json" <<'EOF'
@@ -50,6 +50,9 @@ EOF
 . "$ROOT/src/MagicNet/lib/magicnet/primitives.sh"
 . "$ROOT/src/MagicNet/lib/magicnet/subscribe_bootstrap.sh"
 . "$ROOT/src/MagicNet/lib/magicnet/dns.sh"
+magicnet_conf_value() (
+  awk -F= -v key="$2" '$1 == key { value = substr($0, index($0, "=") + 1); count++ } END { if (count == 1) print value; else exit 1 }' "$1"
+)
 
 normalized_system_dns="$(printf '%s\n' \
   '192.168.50.1, /192.168.50.2 [2001:db8::53], [fe80::1%wlan0]' \
@@ -197,6 +200,21 @@ for direct_profile in cloudflare-udp-direct; do
   }
 done
 
+cat >"$MODDIR/.config/magicnet/dns.conf" <<'EOF'
+MAGICNET_LAN_DNS_SERVER=192.168.50.1
+MAGICNET_LAN_DNS_DOMAINS=router.lan,nas.home.arpa
+EOF
+MAGICNET_BOOTSTRAP_DNS=aliyun MAGICNET_DNS_PROFILE=cloudflare-doh magicnet_dns_apply_singbox
+jq -e --argjson mark "$(magicnet_dns_capture_singbox_mark)" '
+  ([.dns.servers[] | select(.tag == "magicnet-lan-dns")]
+    == [{"type":"udp","tag":"magicnet-lan-dns","server":"192.168.50.1","server_port":53,"routing_mark":$mark}])
+  and .dns.rules[0] == {"domain_suffix":["router.lan","nas.home.arpa"],"server":"magicnet-lan-dns"}
+  and .dns.final == "cloudflare-profile-dns"
+' "$MODDIR/.config/sing-box/config.json" >/dev/null || {
+  printf 'custom LAN DNS must be materialized before public DNS rules\n' >&2
+  exit 1
+}
+rm -f "$MODDIR/.config/magicnet/dns.conf"
 MAGICNET_BOOTSTRAP_DNS=aliyun MAGICNET_DNS_PROFILE=default magicnet_dns_apply_singbox
 jq -e '
   .dns.final == "bootstrap-local-dns"

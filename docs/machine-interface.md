@@ -44,6 +44,8 @@ The process still exits non-zero for an error. Consumers should therefore preser
 
 The response advertises the schema, supported commands and protocol features. This is the compatibility boundary for separately updated components.
 
+When advertised, the `lan_dns_routing` feature means `dns.status.data.lan` is available and describes the explicit LAN DNS gateway and domain suffix configuration, with separate `configured` and `effective` booleans.
+
 Current schema-1 status commands:
 
 ```text
@@ -109,7 +111,7 @@ Examples already enforced in schema 1:
 - Subscription status reports source type, configured count, update/transaction state, lifecycle counters and whether a reason exists; it does not expose the URL or reason text.
 - Wi-Fi status reports connection/match state and list counts; it does not expose SSID or BSSID text.
 - Network status separates `configured` policy from the values materialized in the effective sing-box configuration.
-- DNS status reports the canonical application profile plus `bootstrap_configured` and `bootstrap_transport`; it does not expose a private router DNS address discovered from the active Android network.
+- DNS status reports the canonical application profile plus `bootstrap_configured` and `bootstrap_transport`; it does not expose a private router DNS address discovered from the active Android network. Explicit LAN DNS configuration is reported separately under `lan` with its configured gateway, domain suffixes, and separate `configured` / `effective` flags.
 - Domain-forwarding status reports `configured`, `core_support` and `effective` tokens plus a boolean rule flag; it never returns sniffed domains, rule contents or core paths.
 - Service PID inspection distinguishes `running`, `stopped` and `unknown`; an inspection failure is not treated as a running service.
 - Transparent status reports attachment states and interface counts, not shared-interface names.
