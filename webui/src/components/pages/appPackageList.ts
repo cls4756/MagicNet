@@ -12,6 +12,20 @@ export function isPackageName(value: unknown): value is string {
   return typeof value === "string" && PACKAGE_NAME_PATTERN.test(value);
 }
 
+/** Parse the root `pm list packages` output without depending on manager cache. */
+export function parsePackageListOutput(text: string): string[] {
+  const names: string[] = [];
+  const seen = new Set<string>();
+  for (const raw of text.split(/\r?\n/)) {
+    const line = raw.trim();
+    const packageName = line.startsWith("package:") ? line.slice(8) : line;
+    if (!isPackageName(packageName) || seen.has(packageName)) continue;
+    seen.add(packageName);
+    names.push(packageName);
+  }
+  return names;
+}
+
 /** Mirrors the CLI parser: unknown metadata stays empty, never guessed. */
 export function fallbackPackageInfo(packageName: string): PackageInfo {
   return {

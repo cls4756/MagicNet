@@ -11,6 +11,7 @@ import {
   packageIconUrl,
   packageInitial,
   packageMatchesQuery,
+  parsePackageListOutput,
 } from "./src/components/pages/appPackageList.ts";
 import { devicePackageIconsAvailable, readDevicePackages } from "./src/composables/devicePackages.ts";
 
@@ -50,6 +51,13 @@ test("app rows are searchable by display name, not only by package name", () => 
   assert.equal(packageDisplayName(app("com.example.blank", "  ")), "com.example.blank");
   assert.equal(packageInitial(wechat), "微");
   assert.equal(packageInitial(app("com.example.blank", "")), "C");
+});
+
+test("root package-manager output is parsed and deduplicated", () => {
+  assert.deepEqual(
+    parsePackageListOutput("package:com.example.new\ncom.example.other\npackage:com.example.new\nnot a package\n"),
+    ["com.example.new", "com.example.other"],
+  );
 });
 
 test("a row with no label at all still renders as its package name", () => {
@@ -109,6 +117,15 @@ test("device packages carry labels and degrade to an empty list without a bridge
     uid: 10234,
   });
   assert.equal(packages[1].uid, 0, "missing metadata must not be invented");
+});
+
+test("fresh package names can be enriched without manager listPackages", () => {
+  globalThis.ksu = {
+    getPackagesInfo: (packages) => JSON.stringify([
+      { packageName: JSON.parse(packages)[0], appLabel: "New app" },
+    ]),
+  };
+  assert.deepEqual(readDevicePackages(["com.example.new"]).map((item) => item.appLabel), ["New app"]);
 });
 
 test("a broken or narrow bridge never fabricates labels", () => {

@@ -40,18 +40,20 @@ export function devicePackageIconsAvailable(): boolean {
  * Installed packages with their display names when the manager can answer, and
  * an empty list when it cannot. Callers keep the root CLI as the fallback.
  */
-export function readDevicePackages(): PackageInfo[] {
+export function readDevicePackages(packageNames?: readonly string[]): PackageInfo[] {
   const bridge = packageBridge();
-  if (!bridge?.listPackages) return [];
-  let names: string[];
-  try {
-    names = decodeList(bridge.listPackages("all")).filter(isPackageName);
-  } catch {
-    return [];
+  let names = packageNames?.filter(isPackageName) ?? [];
+  if (!names.length) {
+    if (!bridge?.listPackages) return [];
+    try {
+      names = decodeList(bridge.listPackages("all")).filter(isPackageName);
+    } catch {
+      return [];
+    }
   }
   if (!names.length) return [];
   let info: unknown[] = [];
-  if (typeof bridge.getPackagesInfo === "function") {
+  if (bridge && typeof bridge.getPackagesInfo === "function") {
     try {
       info = decodeList(bridge.getPackagesInfo(JSON.stringify(names)));
     } catch {

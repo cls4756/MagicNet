@@ -35,6 +35,7 @@ import {
 } from "@/composables/operationCapture";
 import { refreshAllNotice } from "@/composables/refreshAllState";
 import { readDevicePackages } from "@/composables/devicePackages";
+import { parsePackageListOutput } from "@/components/pages/appPackageList";
 import { machineFailureText, parseMachineDns, parseMachineDomainForward, parseMachineNetwork, parseMachineRuntime, parseMachineSubscription, parseMachineWifi, type DomainForwardStatus, type NetworkPolicyStatus } from "@/composables/machineStatus";
 import {
   blockDefaults,
@@ -840,12 +841,24 @@ async function refreshApps(
 async function refreshPackages(
   quiet = false,
   foregroundToken?: number,
+  forceDevice = false,
 ): Promise<boolean> {
   // The KernelSU bridge answers with every installed package plus its display
   // name in one synchronous call, so a name search can filter the whole list
   // locally. The CLI only filters package names server-side, which would hide an
   // app whose label matches but whose package name does not, so it stays the
   // fallback for managers without the package API.
+  if (forceDevice) {
+    // KernelSU's package bridge may serve a stale manager cache. A manual app
+    // refresh first asks Android's package manager for the current inventory,
+    // then uses the bridge only to enrich labels and icons.
+    const packageText = await runShell("pm list packages", "读取已安装应用", quiet, "pm list packages");
+    const packageNames = execFailed(packageText) ? [] : parsePackageListOutput(packageText);
+    if (packageNames.length) {
+      state.packages = readDevicePackages(packageNames);
+      return true;
+    }
+  }
   const devicePackages = readDevicePackages();
   if (devicePackages.length) {
     state.packages = devicePackages;

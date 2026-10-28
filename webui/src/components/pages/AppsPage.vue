@@ -202,7 +202,7 @@ async function refreshAppList(): Promise<void> {
     pendingLists.value = null;
     failedAppIcons.value = new Set();
     await refreshApps();
-    await refreshPackages();
+    await refreshPackages(false, undefined, true);
   });
 }
 
