@@ -11,6 +11,11 @@ test("DNS interception is configured from the DNS card", () => {
   assert.doesNotMatch(networkCard, /t\("DNS 劫持"\)/);
 });
 
+test("application default label follows Bootstrap without changing the stored value", () => {
+  assert.match(dnsCard, /value="default"[^>]*>\{\{ t\("跟随 Bootstrap DNS"\)/);
+  assert.doesNotMatch(dnsCard, /t\("默认 DNS"\)/);
+});
+
 test("DNS profile and bootstrap selectors require interception", () => {
   assert.match(dnsCard, /dnsInterception\.value === "on"/);
   assert.match(dnsCard, /!pendingDnsAction\.value\?\.key\.startsWith\("dns-interception-"\)/);

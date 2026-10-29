@@ -10,7 +10,7 @@ export type DnsProfilePlan = {
 };
 
 const PROFILE_LABELS: Record<string, string> = {
-  default: "默认 DNS",
+  default: "跟随 Bootstrap DNS",
   "cloudflare-doh": "Cloudflare DoH",
   "cloudflare-dot": "Cloudflare DoT",
   "cloudflare-udp": "Cloudflare UDP"
@@ -38,7 +38,7 @@ export function buildDnsProfilePlan(currentProfile: string, targetProfile: strin
     warnings: [
       ...(same ? [t("当前已经是该 DNS profile，确认执行通常只会重新应用配置。")] : []),
       ...(target === "cloudflare-udp" ? [t("UDP 方式更容易受网络环境影响；如解析不稳定，优先改用 DoH/DoT。")] : []),
-      ...(target !== "default" ? [t("非默认 profile 会保留独立的 bootstrap-local-dns 解析器，并把应用 DNS 切到所选 profile。")] : [])
+      ...(target !== "default" ? [t("非默认 Profile 会切换远程规则和默认解析器；显式指向 Bootstrap DNS 的规则保持不变。")] : [])
     ]
   };
 }

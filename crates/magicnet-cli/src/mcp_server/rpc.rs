@@ -52,6 +52,7 @@ pub(crate) fn handle_jsonrpc(payload: &str, server: &Server) -> String {
 fn call_tool(tool: &str, args: &Value, server: &Server) -> String {
     match tool {
         "magicnet_status" => run_cli(server, &["--json", "service", "status"]),
+        "magicnet_dns_inspect" => run_cli(server, &["--json", "dns", "inspect"]),
         "magicnet_cli" => cli_args(server, args),
         "magicnet_service_control" => service_control(server, args),
         "magicnet_core_select" => run_cli_owned(
@@ -472,6 +473,15 @@ mod tests {
     use serde_json::{json, Value};
 
     use super::{handle_jsonrpc, run_cli_with_timeout, Server};
+
+    #[test]
+    fn dns_inspection_tool_requests_explicit_private_machine_output() {
+        let response = call_echo_tool("magicnet_dns_inspect", json!({}));
+        assert_eq!(
+            response["result"]["content"][0]["text"],
+            "--json dns inspect\n\nrc=0"
+        );
+    }
 
     #[test]
     fn status_tool_requests_versioned_machine_output() {

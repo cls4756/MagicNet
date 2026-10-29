@@ -3,6 +3,7 @@ use std::sync::OnceLock;
 
 pub(crate) const TOOLS_JSON: &str = r#"{"tools":[
 {"name":"magicnet_status","description":"Show MagicNet service status","inputSchema":{"type":"object","properties":{}}},
+{"name":"magicnet_dns_inspect","description":"Explicit private, read-only DNS rule configuration inspection. Includes match conditions and resolver tags, but no credentials or resolver addresses. Not a diagnostic/status payload or runtime hit report.","inputSchema":{"type":"object","properties":{}}},
 {"name":"magicnet_cli","description":"Run a MagicNet CLI command with explicit argv. This is restricted to the MagicNet CLI binary, not a shell.","inputSchema":{"type":"object","properties":{"args":{"type":"array","items":{"type":"string"},"minItems":1,"maxItems":24}},"required":["args"]}},
 {"name":"magicnet_service_control","description":"Run service status/start/ensure/stop/restart/toggle/logs, optionally with a target such as current or sing-box.","inputSchema":{"type":"object","properties":{"action":{"type":"string","enum":["status","start","ensure","stop","restart","toggle","logs"]},"target":{"type":"string"}}}},
 {"name":"magicnet_core_select","description":"Confirm MagicNet uses the sing-box core. Only sing-box is supported.","inputSchema":{"type":"object","properties":{"core":{"type":"string","enum":["sing-box"]}},"required":["core"]}},

@@ -54,6 +54,7 @@ core.status
 supervisor.status
 transparent.status
 dns.status
+dns.inspect
 network.status
 domain-forward.status
 sub.status
@@ -68,6 +69,7 @@ Examples:
 /data/adb/modules/MagicNet/cli --json service status
 /data/adb/modules/MagicNet/cli --json transparent status
 /data/adb/modules/MagicNet/cli --json dns status
+/data/adb/modules/MagicNet/cli --json dns inspect
 /data/adb/modules/MagicNet/cli --json network status
 /data/adb/modules/MagicNet/cli --json domain-forward status
 /data/adb/modules/MagicNet/cli --json sub status
@@ -161,6 +163,45 @@ not the human `sub list` / `sub status` / `wifi status` parsers. The existing
 status resources. Their privacy boundary has not been relaxed.
 
 ### Explicit private inspectors
+
+`cli --json dns inspect` is an explicit private, read-only DNS configuration
+inspector, advertised in both `commands` and `private_commands`. MCP exposes
+the same request as `magicnet_dns_inspect`; automatic status/diagnostic requests
+do not include it. It returns bounded matching conditions and resolver/rule-set
+tags required by the rule editor, not DNS server addresses, outbound nodes,
+credentials, or arbitrary configuration fields. It is not a safe issue-report
+payload. WebUI reads it through private command transport without capturing its
+output in reactive command logs.
+
+The inspector reports ordered rules with revision-bound IDs, `editable`, and
+normalized `protected_reason` (`mode`, `feature`, or `unsupported`). It also
+reports available resolver targets, rule-set references, configured `final_server`
+and `node_resolver`, and the intended `application_server`. These are configuration
+facts, not observed core decisions: `runtime_state` is always `unknown` and no
+per-rule runtime hit or effective application is inferred. `source` identifies
+`configuration` or `user_intent`; `truncated=true` forbids saving from that snapshot.
+Revision change detection covers the configuration, DNS preferences and optional
+saved rule intent; this is not a global OS snapshot.
+
+The human command `cli dns rules save-file <webui-payload-path>` remains outside
+the machine dispatcher. It uses the existing bounded private payload transport,
+the lifecycle flock and shell configuration lock (in that order), rejects active
+or unrecovered subscription/transparent transactions, checks revisions, resolver
+and rule-set references and protected rules, and validates a full candidate with
+`sing-box check` using the final data directory before persisting intent. Mode,
+Tailscale, LAN DNS and unsupported/advanced rules cannot be edited, deleted or moved;
+protected entries are submitted as ID-only references so redacted fields are
+never reconstructed by the browser. Ordinary rules can be reordered within
+editable segments; deleting a rule must not shift a protected rule's position.
+Application failure attempts to restore both prior intent and configuration and
+reapply them while holding the locks; recovery failure is not reported as success.
+Config-editor commits share the lifecycle lock so an overlapping editor save
+cannot be overwritten by DNS rollback. Lock inheritance verifies the parent
+PID/start-time owner and stays local to runtime shells, never exported to
+detached maintenance workers.
+Interrupted publication leaves the atomic intent file as durable desired state;
+normal config application reapplies that intent. The internal lock-inheriting
+reentry is not a new JSON mutation API.
 
 `cli --json sub inspect` and `cli --json wifi inspect` are read-only local
 configuration inspections, advertised separately in `capabilities.private_commands`.

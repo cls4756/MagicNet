@@ -43,6 +43,14 @@ unset MCP_TEST_SECRET
 
 不要使用 `set -x` 运行这段命令，也不要把含认证头的命令历史、终端录屏或日志贴到 Issue。
 
+## DNS 规则检查
+
+DNS 规则的显式只读检查工具是 `magicnet_dns_inspect`，对应
+`cli --json dns inspect`。它会返回编辑所需的匹配条件和解析器标签，
+不返回 DNS 服务器地址或节点凭据，也不声称规则已被运行中的核心命中。
+这是私有配置检查，不应自动放进健康报告、Issue 或通用诊断日志。
+规则保存仍使用人类 CLI 的私有载荷命令，不新增 JSON 写接口。
+
 ## Secret 轮换与日志
 
 ```bash

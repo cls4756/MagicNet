@@ -198,6 +198,21 @@ magicnet_dns_apply_singbox() {
         unset _profile _bootstrap _bootstrap_server _bootstrap_type _bootstrap_sni _config
         return 1
     }
+    _dns_rules_input=/dev/null
+    _dns_rules_conf="${MODDIR}/.config/magicnet/dns-rules.json"
+    if [ -e "$_dns_rules_conf" ] || [ -L "$_dns_rules_conf" ]; then
+        if [ ! -f "$_dns_rules_conf" ] || [ -L "$_dns_rules_conf" ] ||
+            [ "$(wc -c <"$_dns_rules_conf")" -gt 4194304 ] ||
+            ! "$_jq" -e '
+                select(.schema == 1 and (.rules | type) == "array" and (.rules | length) <= 256)
+                | .rules | select(all(.[]; type == "object"))
+            ' "$_dns_rules_conf" >/dev/null; then
+            magicnet_warn "saved DNS rule intent is invalid; DNS apply rejected"
+            unset _profile _bootstrap _bootstrap_server _bootstrap_type _bootstrap_sni _config _jq _dns_rules_input _dns_rules_conf
+            return 1
+        fi
+        _dns_rules_input="$_dns_rules_conf"
+    fi
     _via_proxy="${MAGICNET_DNS_VIA_PROXY:-}"
     [ -n "$_via_proxy" ] || _via_proxy="$(magicnet_conf_value "$(magicnet_dns_conf)" MAGICNET_DNS_VIA_PROXY 2>/dev/null || true)"
     case "$_via_proxy" in
@@ -248,6 +263,7 @@ magicnet_dns_apply_singbox() {
     magicnet_jq_install_config "$_config" "$_tmp" "$_jq" --arg profile "$_profile" --arg bootstrap "$_bootstrap" \
         --arg bootstrap_server "$_bootstrap_server" --arg bootstrap_type "$_bootstrap_type" --arg bootstrap_sni "$_bootstrap_sni" \
         --arg lan_server "$_lan_server" --argjson lan_domains "$_lan_domains_json" \
+        --slurpfile dns_rules_documents "$_dns_rules_input" \
         --argjson dns_capture_singbox_mark "$(magicnet_dns_capture_singbox_mark)" --argjson via_proxy "$_via_proxy" -e '
       # Build a DNS server definition for a given provider and transport.
       # When via_proxy is true, the server uses detour:"proxy" so queries
@@ -293,7 +309,7 @@ magicnet_dns_apply_singbox() {
          "quad9-profile-dns","quad9-backup-dns"];
       def lan_dns_tag: "magicnet-lan-dns";
       def rewrite_rule_tags:
-        ["default-remote-dns","doh-cloudflare","doh-google",
+        ["__magicnet_dns_profile__","default-remote-dns","doh-cloudflare","doh-google",
          "cloudflare-profile-dns","cloudflare-backup-dns","google-profile-dns","google-backup-dns",
          "adguard-profile-dns","adguard-backup-dns","quad9-profile-dns","quad9-backup-dns"];
       def profile_dns_tag:
@@ -319,7 +335,11 @@ magicnet_dns_apply_singbox() {
         else
           {"type":"https","tag":"bootstrap-local-dns","server":$bootstrap_server,"server_port":443,"routing_mark":$dns_capture_singbox_mark,"path":"/dns-query","headers":{"Host":$bootstrap_sni},"tls":{"server_name":$bootstrap_sni}}
         end;
-      .dns.servers = (
+      ($dns_rules_documents | if length == 0 then null
+        elif length == 1 and .[0].schema == 1 and (.[0].rules | type) == "array"
+          and (.[0].rules | length) <= 256 and (.[0].rules | all(.[]; type == "object")) then .[0].rules
+        else error("invalid saved DNS rule intent") end) as $dns_rules_override
+      | .dns.servers = (
         (.dns.servers // [])
         | map(select((.tag // "") as $tag | ((managed_tags | index($tag)) == null and $tag != lan_dns_tag)))
         | (if $profile == "default" then [default_bootstrap]
@@ -345,15 +365,19 @@ magicnet_dns_apply_singbox() {
           else .
           end
         )
-       | .dns.rules = ((.dns.rules // []) | map(select((.server // "") != lan_dns_tag)) | map(
-           if ((.server // "") as $server | rewrite_rule_tags | index($server)) != null
-           then .server = profile_dns_tag
-           else .
-           end
-         ) | if ($lan_domains | length) > 0 then
-               [{"domain_suffix":$lan_domains,"server":lan_dns_tag}] + .
-             else .
-             end)
+      | .dns.rules = (
+          if $dns_rules_override == null then (.dns.rules // [])
+          else ([.dns.servers[]? | select(.type == "tailscale") | .tag] as $feature_servers
+            | [(.dns.rules // [])[] | select((.server // "") as $server | $feature_servers | index($server))] + $dns_rules_override)
+          end | map(select((.server // "") != lan_dns_tag)) | map(
+          if ((.server // "") as $server | rewrite_rule_tags | index($server)) != null
+          then .server = profile_dns_tag
+          else .
+          end
+        ) | if ($lan_domains | length) > 0 then
+              [{"domain_suffix":$lan_domains,"server":lan_dns_tag}] + .
+            else .
+            end)
       # route.default_domain_resolver remains bootstrap-local-dns for proxy
       # node hostnames; using a proxy-detoured profile there would recurse.
       | .dns.final = profile_dns_tag
@@ -375,7 +399,7 @@ magicnet_dns_apply_singbox() {
         else . end
     ' "$_config"
     _rc=$?
-    unset _profile _bootstrap _bootstrap_server _bootstrap_type _bootstrap_sni _config _jq _tmp _via_proxy
+    unset _profile _bootstrap _bootstrap_server _bootstrap_type _bootstrap_sni _config _jq _tmp _via_proxy _dns_rules_input _dns_rules_conf
     unset _lan_server _lan_domains _lan_domains_json
     return "$_rc"
 }

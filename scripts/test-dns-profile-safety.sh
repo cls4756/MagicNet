@@ -261,6 +261,67 @@ jq -e '
   exit 1
 }
 
+mkdir -p "$MODDIR/.config/magicnet"
+cat >"$MODDIR/.config/magicnet/dns-rules.json" <<'EOF'
+{"schema":1,"rules":[
+  {"clash_mode":"Global","server":"__magicnet_dns_profile__"},
+  {"domain_suffix":["cn"],"server":"bootstrap-local-dns"},
+  {"domain_suffix":["edited.invalid"],"server":"__magicnet_dns_profile__"}
+]}
+EOF
+jq '.dns.servers += [{"type":"tailscale","tag":"tailscale-dns"}] | .dns.rules = [{"domain_suffix":["feature.invalid"],"server":"tailscale-dns"}] + .dns.rules' \
+  "$MODDIR/.config/sing-box/config.json" >"$WORK/with-feature.json"
+mv "$WORK/with-feature.json" "$MODDIR/.config/sing-box/config.json"
+cat >"$MODDIR/.config/magicnet/dns.conf" <<'EOF'
+MAGICNET_LAN_DNS_SERVER=192.168.50.1
+MAGICNET_LAN_DNS_DOMAINS=router.lan,nas.home.arpa
+EOF
+for profile in cloudflare-doh default google-dot default cloudflare-doh; do
+  MAGICNET_DNS_PROFILE="$profile" MAGICNET_BOOTSTRAP_DNS=aliyun magicnet_dns_apply_singbox
+  expected=bootstrap-local-dns
+  [ "$profile" = default ] || expected="${profile%%-*}-profile-dns"
+  jq -e --arg expected "$expected" '
+    (.dns.rules | length) == 5
+    and .dns.rules[0] == {"domain_suffix":["router.lan","nas.home.arpa"],"server":"magicnet-lan-dns"}
+    and .dns.rules[1].server == "tailscale-dns"
+    and .dns.rules[2].server == $expected
+    and .dns.rules[3].server == "bootstrap-local-dns"
+    and .dns.rules[4].domain_suffix == ["edited.invalid"]
+    and .dns.rules[4].server == $expected
+  ' "$MODDIR/.config/sing-box/config.json" >/dev/null
+done
+rm "$MODDIR/.config/magicnet/dns.conf"
+MAGICNET_DNS_PROFILE=cloudflare-doh magicnet_dns_apply_singbox
+jq -e '
+  (.dns.rules | length) == 4
+  and all(.dns.rules[]; .server != "magicnet-lan-dns")
+  and .dns.rules[3].domain_suffix == ["edited.invalid"]
+' "$MODDIR/.config/sing-box/config.json" >/dev/null
+
+jq -n '{schema:1,rules:[range(0;128) | {domain_suffix:[range(0;32) | (("x" * 160) + ".invalid")],server:"__magicnet_dns_profile__"}]}' \
+  >"$MODDIR/.config/magicnet/dns-rules.json"
+MAGICNET_DNS_PROFILE=cloudflare-doh magicnet_dns_apply_singbox
+jq -e '(.dns.rules | length) == 129 and .dns.rules[128].server == "cloudflare-profile-dns"' \
+  "$MODDIR/.config/sing-box/config.json" >/dev/null
+
+before_invalid_intent="$(sha256sum "$MODDIR/.config/sing-box/config.json" | awk '{print $1}')"
+for malformed in 'invalid' '{"schema":2,"rules":[]}' '{"schema":1,"rules":[null]}'; do
+  printf '%s\n' "$malformed" >"$MODDIR/.config/magicnet/dns-rules.json"
+  if MAGICNET_DNS_PROFILE=default magicnet_dns_apply_singbox >/dev/null 2>&1; then
+    printf 'malformed DNS rule intent must be rejected\n' >&2
+    exit 1
+  fi
+  [ "$before_invalid_intent" = "$(sha256sum "$MODDIR/.config/sing-box/config.json" | awk '{print $1}')" ]
+done
+rm "$MODDIR/.config/magicnet/dns-rules.json"
+ln -s "$MODDIR/.config/sing-box/config.json" "$MODDIR/.config/magicnet/dns-rules.json"
+if MAGICNET_DNS_PROFILE=default magicnet_dns_apply_singbox >/dev/null 2>&1; then
+  printf 'symlink DNS rule intent must be rejected\n' >&2
+  exit 1
+fi
+[ "$before_invalid_intent" = "$(sha256sum "$MODDIR/.config/sing-box/config.json" | awk '{print $1}')" ]
+rm "$MODDIR/.config/magicnet/dns-rules.json"
+
 if [ "$with_routing_assets" -eq 1 ]; then
   command -v sing-box >/dev/null 2>&1 || {
     printf 'prepared DNS checks require sing-box and rule-set assets\n' >&2

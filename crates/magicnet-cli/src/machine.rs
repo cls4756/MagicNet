@@ -36,6 +36,7 @@ const MACHINE_COMMANDS: &[&str] = &[
     "supervisor.status",
     "transparent.status",
     "dns.status",
+    "dns.inspect",
     "network.status",
     "domain-forward.status",
     "sub.status",
@@ -91,6 +92,14 @@ fn machine_value(app: &App, command: &[&str]) -> Result<Value, MachineError> {
             Ok(transparent_status_value(app))
         }
         [command, action] if *command == "dns" && *action == "status" => Ok(dns_status_value(app)),
+        [command, action] if *command == "dns" && *action == "inspect" => {
+            crate::dns_rules::inspect(app)
+                .map(|data| envelope("dns.inspect", data))
+                .map_err(|_| MachineError {
+                    code: "machine.dns_observation_failed",
+                    message: "unable to inspect DNS rule configuration",
+                })
+        }
         [command, action] if *command == "network" && *action == "status" => {
             Ok(network_status_value(app))
         }
@@ -166,7 +175,7 @@ fn capabilities_value() -> Value {
                 "readiness_signals",
                 "lan_dns_routing"
             ],
-            "private_commands": ["sub.inspect", "wifi.inspect", "routing.inspect"],
+            "private_commands": ["sub.inspect", "wifi.inspect", "routing.inspect", "dns.inspect"],
             "json_flag_positions": ["prefix", "suffix"],
             "read_only": true,
         }),
@@ -884,7 +893,12 @@ mod tests {
         assert_eq!(value["data"]["read_only"], true);
         assert_eq!(
             value["data"]["private_commands"],
-            serde_json::json!(["sub.inspect", "wifi.inspect", "routing.inspect"])
+            serde_json::json!([
+                "sub.inspect",
+                "wifi.inspect",
+                "routing.inspect",
+                "dns.inspect"
+            ])
         );
         let commands = value["data"]["commands"]
             .as_array()

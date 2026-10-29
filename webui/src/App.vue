@@ -75,7 +75,7 @@ const TAB_TARGETS: Record<string, { workspace: WorkspaceKey; settings?: Settings
   proxy: { workspace: "nodes" },
   chain: { workspace: "nodes" },
   apps: { workspace: "settings", settings: "apps" },
-  dns: { workspace: "settings", settings: "proxy" },
+  dns: { workspace: "settings", settings: "dns" },
   stack: { workspace: "settings", settings: "proxy" },
   domain: { workspace: "settings", settings: "proxy" },
   block: { workspace: "settings", settings: "proxy" },

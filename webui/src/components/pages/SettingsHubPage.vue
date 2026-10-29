@@ -3,6 +3,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Cpu,
+  Globe,
   LayoutGrid,
   Router,
   ScrollText,
@@ -36,7 +37,8 @@ const groups: readonly SettingsGroup[] = [
   {
     label: "代理",
     items: [
-      { key: "proxy", title: "代理设置", subtitle: "协议栈、DNS、域名转发与分流规则", icon: Router },
+      { key: "proxy", title: "代理设置", subtitle: "协议栈、域名转发与分流规则", icon: Router },
+      { key: "dns", title: "DNS 设置", subtitle: "DNS 劫持、应用 DNS、Bootstrap DNS 与解析规则", icon: Globe },
       { key: "kernel", title: "内核设置", subtitle: "sing-box 配置文件与管理面板", icon: Cpu },
       { key: "apps", title: "应用分流", subtitle: "选择哪些应用需要走代理", icon: LayoutGrid },
       { key: "outbound", title: "外部出站", subtitle: "WARP 与 Tailscale 出站", icon: Waypoints },
@@ -55,6 +57,7 @@ const groups: readonly SettingsGroup[] = [
 
 const detailPages: Record<SettingsRoute, Component> = {
   proxy: defineAsyncComponent(() => import("./settings/ProxySettingsPage.vue")),
+  dns: defineAsyncComponent(() => import("./settings/DnsSettingsPage.vue")),
   kernel: defineAsyncComponent(() => import("./settings/KernelSettingsPage.vue")),
   apps: defineAsyncComponent(() => import("./AppsPage.vue")),
   outbound: defineAsyncComponent(() => import("./settings/OutboundPage.vue")),
@@ -66,6 +69,7 @@ const detailPages: Record<SettingsRoute, Component> = {
 
 const detailTitles: Record<SettingsRoute, string> = {
   proxy: "代理设置",
+  dns: "DNS 设置",
   kernel: "内核设置",
   apps: "应用分流",
   outbound: "外部出站",
@@ -92,9 +96,11 @@ const {
 function warmDetail(route: SettingsRoute | null): void {
   if (route === "proxy") {
     void refreshNetwork(true);
-    void refreshDns(true);
     void refreshDomainForward(true);
     void refreshBlock(true);
+  } else if (route === "dns") {
+    void refreshNetwork(true);
+    void refreshDns(true);
   } else if (route === "apps") {
     void refreshApps(true);
   } else if (route === "outbound") {

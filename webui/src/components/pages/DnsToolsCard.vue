@@ -316,7 +316,7 @@ onMounted(() => void refreshNetworkState(true));
           :disabled="!dnsSettingsEnabled"
           @change="setDnsProfile(($event.target as HTMLSelectElement).value)"
         >
-          <option value="default">{{ t("默认 DNS") }}</option>
+          <option value="default">{{ t("跟随 Bootstrap DNS") }}</option>
           <option value="cloudflare-doh">Cloudflare DoH</option>
           <option value="cloudflare-dot">Cloudflare DoT</option>
           <option value="cloudflare-udp">Cloudflare UDP</option>

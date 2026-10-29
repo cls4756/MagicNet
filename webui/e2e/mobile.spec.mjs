@@ -8,7 +8,7 @@ const pages = [
   ["configure", "subs", "订阅管理"],
   ["configure", "config", "内核设置"],
   ["configure", "webui", "内核设置"],
-  ["configure", "dns", "代理设置"],
+  ["configure", "dns", "DNS 设置"],
   ["route", "domain", "代理设置"],
   ["route", "warp", "外部出站"],
   ["configure", "stack", "代理设置"],

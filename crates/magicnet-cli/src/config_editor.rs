@@ -93,7 +93,12 @@ fn save_config_file(app: &App, target: &str, path: &Path, args: &[String]) -> Re
     if tmp.as_os_str().is_empty() {
         return Err("Usage: cli config-editor save-file sing-box <webui-payload-path>".to_string());
     }
-    let (source, _tmp_directory) = open_webui_payload_source(app, &tmp)?;
+    let text = read_webui_payload_text(app, &tmp)?;
+    commit_standalone_config(app, target, path, &text)
+}
+
+pub(crate) fn read_webui_payload_text(app: &App, path: &Path) -> Result<String, String> {
+    let (source, _tmp_directory) = open_webui_payload_source(app, path)?;
     let mut bytes = Vec::new();
     source
         .take(MAX_WEBUI_PAYLOAD_BYTES + 1)
@@ -104,8 +109,14 @@ fn save_config_file(app: &App, target: &str, path: &Path, args: &[String]) -> Re
             "WebUI config payload exceeds the {MAX_WEBUI_PAYLOAD_BYTES} byte limit"
         ));
     }
-    let text = String::from_utf8(bytes).map_err(|err| format!("config is not UTF-8: {err}"))?;
-    commit_standalone_config(app, target, path, &text)
+    String::from_utf8(bytes).map_err(|err| format!("config is not UTF-8: {err}"))
+}
+
+pub(crate) fn validate_singbox_config_text(app: &App, text: &str) -> Result<(), String> {
+    with_generated_config_input(app, "dns-rules", text.as_bytes(), |source, _directory| {
+        let directory = open_config_destination_directory(app, "sing-box")?;
+        validate_config_from_open_file(app, "sing-box", source, &directory)
+    })
 }
 
 fn commit_standalone_config(
@@ -551,12 +562,14 @@ fn commit_config_text(
     role: &str,
     protected_keys: Option<&str>,
 ) -> Result<(), String> {
-    with_generated_config_input(app, role, bytes, |source, _directory| {
-        validate_and_commit_open_config_file_with(app, target, path, source, || {
-            if let Some(keys) = protected_keys {
-                write_secret_file(app, Path::new(TAILSCALE_AUTH_PATH), keys)?;
-            }
-            Ok(())
+    crate::service::with_config_apply_lock(app, || {
+        with_generated_config_input(app, role, bytes, |source, _directory| {
+            validate_and_commit_open_config_file_with(app, target, path, source, || {
+                if let Some(keys) = protected_keys {
+                    write_secret_file(app, Path::new(TAILSCALE_AUTH_PATH), keys)?;
+                }
+                Ok(())
+            })
         })
     })?;
     println!(

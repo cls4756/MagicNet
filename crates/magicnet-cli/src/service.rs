@@ -256,6 +256,53 @@ pub(crate) fn apply_config(app: &App) -> Result<(), String> {
     // attached to different core generations.
     let _config_apply_guard = config_apply_lock(app)?;
 
+    apply_config_locked(app)
+}
+
+pub(crate) fn with_config_apply_lock(
+    app: &App,
+    action: impl FnOnce() -> Result<(), String>,
+) -> Result<(), String> {
+    let _config_apply_guard = config_apply_lock(app)?;
+    action()
+}
+
+pub(crate) fn run_dns_rules_save(app: &App, payload_path: &Path) -> Result<(), String> {
+    let _config_apply_guard = config_apply_lock(app)?;
+    if transparent_transaction_active(app) {
+        return Err(
+            "transparent transaction requires recovery; apply the current configuration first"
+                .to_string(),
+        );
+    }
+    let executable = std::env::current_exe().map_err(|_| "unable to locate the CLI executable")?;
+    let quote = |path: &Path| format!("'{}'", path.to_string_lossy().replace('\'', "'\\''"));
+    run_magicnet_function(app, &format!(
+        ". \"$MODDIR/lib/magicnet_singbox_subscribe.sh\"; magicnet_dns_rules_commit() {{ if magicnet_singbox_update_lock_active || [ -d \"$MODDIR/.state/sing-box/subscription-transaction\" ]; then echo '[error] subscription transaction requires completion or recovery' >&2; return 1; fi; MAGICNET_DNS_RULES_LOCKED=1 MAGICNET_CONFIG_LOCK_HELD=1 {} dns rules save-file {}; }}; magicnet_with_config_lock magicnet_dns_rules_commit",
+        quote(&executable), quote(payload_path)
+    )).map_err(|_| "DNS rule validation or application failed; reload rules and check health".to_string())
+}
+
+pub(crate) fn apply_config_transaction_locked(
+    app: &App,
+    prepare: impl FnOnce() -> Result<(), String>,
+    rollback: impl FnOnce() -> Result<(), String>,
+) -> Result<(), String> {
+    prepare()?;
+    if let Err(error) = apply_config_locked(app) {
+        return match rollback().and_then(|_| apply_config_locked(app)) {
+            Ok(()) => Err(format!(
+                "configuration apply failed; previous DNS rules restored: {error}"
+            )),
+            Err(recovery) => Err(format!(
+                "configuration apply failed; rollback requires recovery: {error}; {recovery}"
+            )),
+        };
+    }
+    Ok(())
+}
+
+fn apply_config_locked(app: &App) -> Result<(), String> {
     // A killed transparent-mode transition leaves a journal that must be
     // recovered before fswatch can apply another config. A live transition
     // still owns this process lock, so reaching this branch means the journal

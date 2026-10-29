@@ -64,6 +64,25 @@ A persistent user choice must not be hidden in `.state`. Selector choices theref
 
 ## Transactional publication
 
+DNS rule edits persist user intent in `.config/magicnet/dns-rules.json`, an
+atomically replaced `{ "schema": 1, "rules": [...] }` document. This is private
+configuration, not canonical runtime state. The application-resolver target is
+stored as `__magicnet_dns_profile__` so Profile changes (including `default`)
+do not erase the distinction from explicit `bootstrap-local-dns` rules. Runtime
+materialization resolves that alias to the selected application Profile and
+retains current Tailscale- and LAN-DNS-owned rules separately. LAN DNS rules are
+regenerated from DNS preferences and retain priority over ordinary rules. The
+complete saved ordinary
+rule list overrides subscription-template DNS rules; unavailable references fail
+validation instead of being silently retargeted. No new public `.state` domain,
+runtime-hit marker or browser-only background operation is introduced.
+
+The application DNS choice `default` is displayed as “Follow Bootstrap DNS”;
+its stored value is unchanged. Bootstrap also remains the target of explicit
+local/service rules and the default node-hostname resolver when a non-default
+application Profile is selected. DNS resolver selection is separate from
+connection outbound routing.
+
 `magicnet-cli` reconciles all canonical machine records from one observation pass. It calculates the complete snapshot first, compares it with the previous files, and sends all changed records through the existing multi-file transaction primitive. The transaction stages and syncs replacements and rolls already-published files back if a later replacement fails.
 
 This is a recoverable multi-file commit, not a claim that every file rename is simultaneously visible to lock-free readers. A reader that needs a cross-domain point-in-time snapshot should use the versioned machine interface rather than independently racing several `.state` files.

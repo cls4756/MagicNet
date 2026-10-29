@@ -24,6 +24,7 @@ pub(crate) fn dns_cmd(app: &App, args: &[String]) -> Result<(), String> {
         "set" => dns_set(app, args.get(1).map(String::as_str).unwrap_or_default()),
         "bootstrap" => dns_bootstrap_cmd(app, &args[1..]),
         "lan" => dns_lan_cmd(app, &args[1..]),
+        "rules" => crate::dns_rules::command(app, &args[1..]),
         "test" => dns_test(args.get(1).map(String::as_str).unwrap_or("www.gstatic.com")),
         "apply" => {
             run_magicnet_function(app, "magicnet_dns_apply")?;
@@ -306,7 +307,7 @@ fn normalize_test_domain(domain: &str) -> Result<&str, String> {
     }
 }
 
-fn dns_profile(app: &App) -> String {
+pub(crate) fn dns_profile(app: &App) -> String {
     read_kv(app.moddir.join(DNS_CONF))
         .remove("MAGICNET_DNS_PROFILE")
         .and_then(|value| normalize_profile(&value).ok().map(ToOwned::to_owned))
@@ -408,7 +409,7 @@ fn bootstrap_transport(bootstrap: &str) -> &'static str {
 }
 
 fn dns_usage() -> String {
-    "Usage: cli dns {status|set <profile>|bootstrap {status|set <system|aliyun|baidu|tencent>}|lan {status|set <gateway> <domain,...>|clear}|test [domain]|apply}\n\
+    "Usage: cli dns {status|set <profile>|bootstrap {status|set <system|aliyun|baidu|tencent>}|lan {status|set <gateway> <domain,...>|clear}|rules save-file <webui-payload-path>|test [domain]|apply}\n\
      Available profiles:\n\
      - default\n\
      - cloudflare-doh [direct: cloudflare-doh-direct]\n\

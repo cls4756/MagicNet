@@ -65,6 +65,14 @@ su -c /data/adb/modules/MagicNet/cli node current
 
 WebUI 可查看延迟、手动选择节点或切回自动组。选择结果会持久化；订阅更新后不存在的节点会被安全重建为有效候选。
 
+## DNS 设置
+
+在 WebUI 的“设置 → DNS 设置”独立入口调整 DNS 劫持、应用 DNS Profile、Bootstrap DNS、局域网 DNS 和解析规则；这些选项不再放在“代理设置”里。新路由是 `#/settings/dns`，原来的 `#/dns` 深链接仍然指向 DNS 设置。
+
+进入核心的普通应用 DNS 请求按顺序匹配规则，未命中时使用 `dns.final`；节点域名通常使用独立的 Bootstrap 解析器。应用 DNS 的 `default` 显示为“跟随 Bootstrap DNS”，内部配置值不变。
+
+普通规则可编辑并在保护边界内调整；模式、局域网 DNS、Tailscale 和高级规则只读。应用前校验引用、配置版本和完整 sing-box 配置，失败时尝试恢复原配置。规则意图独立保存，后续订阅和 Profile 切换继续应用；界面展示的是配置规则，不是实时命中统计。
+
 ## 域名转发（节点按域名分流）
 
 透明代理下应用发出的是 IP 数据包，MagicNet 通过嗅探恢复域名。默认开启的域名转发会把嗅探结果交给出站，让节点按域名自行分流；关闭后出站只使用 IP，节点只能按 IP 处理。

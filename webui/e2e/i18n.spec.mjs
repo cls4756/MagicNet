@@ -29,6 +29,9 @@ for (const [browserLocale, language, overview] of [
         await page.evaluate((tab) => { window.location.hash = `/${tab}`; }, tab);
         if (tab === 'control') await expect(page.locator('.mn-control')).toBeVisible();
         else await expect(page.locator('.page-surface h2').first()).toBeVisible();
+        if (tab === 'dns') {
+          await expect(page.locator('.mn-detail-head h2')).toHaveText(language === 'en' ? 'DNS settings' : 'Настройки DNS');
+        }
         await page.evaluate(() => {
           document.querySelectorAll('.page-surface details:not(.config-action-menu)').forEach((node) => { node.open = true; });
         });

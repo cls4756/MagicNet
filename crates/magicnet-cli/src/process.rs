@@ -629,8 +629,13 @@ fn run_magicnet_shell(
     // use.  MODDIR can be inherited from an untrusted launcher; interpolating
     // its display form into a single-quoted script would turn a path quote
     // into root shell syntax before the command even starts.
+    let lock_prefix = if crate::dns_rules::inherited_config_lock(app) {
+        "MAGICNET_CONFIG_LOCK_HELD=1; "
+    } else {
+        ""
+    };
     let script = format!(
-        ". \"$MODDIR/lib/kamfw/.kamfwrc\"; export PATH=\"{}\"; import __runtime__; . \"$MODDIR/lib/magicnet.sh\"; {function_name}",
+        "{lock_prefix}. \"$MODDIR/lib/kamfw/.kamfwrc\"; export PATH=\"{}\"; import __runtime__; . \"$MODDIR/lib/magicnet.sh\"; {function_name}",
         trusted_path(),
     );
     let timeout = Duration::from_secs(command_timeout_secs(
@@ -644,6 +649,8 @@ fn run_magicnet_shell(
         .arg(app.moddir.join("cli").to_string_lossy().to_string())
         .env("MODDIR", &app.moddir)
         .env("MODPATH", &app.moddir)
+        .env_remove("MAGICNET_CONFIG_LOCK_HELD")
+        .env_remove("MAGICNET_DNS_RULES_LOCKED")
         .stdin(Stdio::null());
     clear_unsafe_subscription_environment(&mut command);
     if let Some((candidate_env, candidate_fd)) = subscription_candidate {
