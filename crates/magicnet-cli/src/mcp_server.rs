@@ -24,14 +24,23 @@ struct ConnectionPermit {
 
 impl ConnectionPermit {
     fn try_acquire(active: &Arc<AtomicUsize>, limit: usize) -> Option<Self> {
-        active
-            .fetch_update(Ordering::AcqRel, Ordering::Acquire, |current| {
-                (current < limit).then_some(current + 1)
-            })
-            .ok()?;
-        Some(Self {
-            active: Arc::clone(active),
-        })
+        let mut current = active.load(Ordering::Acquire);
+        while current < limit {
+            match active.compare_exchange_weak(
+                current,
+                current + 1,
+                Ordering::AcqRel,
+                Ordering::Acquire,
+            ) {
+                Ok(_) => {
+                    return Some(Self {
+                        active: Arc::clone(active),
+                    });
+                }
+                Err(updated) => current = updated,
+            }
+        }
+        None
     }
 }
 
@@ -91,6 +100,7 @@ pub(crate) fn serve(app: &App, address: SocketAddr, secret: String) -> Result<()
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Barrier;
 
     #[test]
     fn connection_permits_bound_and_release_worker_capacity() {
@@ -101,5 +111,36 @@ mod tests {
         drop(first);
         assert!(ConnectionPermit::try_acquire(&active, 2).is_some());
         drop(second);
+    }
+
+    #[test]
+    fn connection_permits_enforce_capacity_under_contention() {
+        let active = Arc::new(AtomicUsize::new(0));
+        let worker_count = 16;
+        let limit = 4;
+        let start = Arc::new(Barrier::new(worker_count));
+        let ready = Arc::new(Barrier::new(worker_count + 1));
+        let workers: Vec<_> = (0..worker_count)
+            .map(|_| {
+                let active = Arc::clone(&active);
+                let start = Arc::clone(&start);
+                let ready = Arc::clone(&ready);
+                thread::spawn(move || {
+                    start.wait();
+                    let permit = ConnectionPermit::try_acquire(&active, limit);
+                    ready.wait();
+                    permit
+                })
+            })
+            .collect();
+        ready.wait();
+        assert_eq!(active.load(Ordering::Acquire), limit);
+        let permits: Vec<_> = workers
+            .into_iter()
+            .filter_map(|worker| worker.join().unwrap())
+            .collect();
+        assert_eq!(permits.len(), limit);
+        drop(permits);
+        assert_eq!(active.load(Ordering::Acquire), 0);
     }
 }
