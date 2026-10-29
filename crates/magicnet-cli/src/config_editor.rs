@@ -1378,8 +1378,13 @@ mod tests {
         assert!(unavailable.contains("unavailable"));
 
         fs::write(
+            fixture.moddir.join("oversized-template.json"),
+            vec![b'x'; TEMPLATE_MAX_BYTES + 1],
+        )
+        .expect("oversized template fixture");
+        fs::write(
             &curl,
-            "#!/bin/sh\nchunk=0123456789abcdef0123456789abcdef; i=0; while [ \"$i\" -lt 131072 ]; do printf %s \"$chunk\"; i=$((i + 1)); done\n",
+            "#!/bin/sh\ncat \"${0%/*}/oversized-template.json\"\n",
         )
         .expect("oversized curl fixture");
         let oversized = fetch_template_with_curl(
@@ -1390,7 +1395,7 @@ mod tests {
             Duration::from_secs(3),
         )
         .expect_err("oversized fetch must fail");
-        assert!(oversized.contains("exceeds"));
+        assert!(oversized.contains("exceeds"), "{oversized}");
     }
 
     #[test]

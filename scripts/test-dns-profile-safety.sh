@@ -54,6 +54,21 @@ magicnet_conf_value() (
   awk -F= -v key="$2" '$1 == key { value = substr($0, index($0, "=") + 1); count++ } END { if (count == 1) print value; else exit 1 }' "$1"
 )
 
+assert_profile_normalization() {
+  local configured="$1"
+  local expected="$2"
+  [ "$(MAGICNET_DNS_PROFILE="$configured" magicnet_dns_profile)" = "$expected" ] || {
+    printf 'DNS profile normalization failed for %s\n' "$configured" >&2
+    exit 1
+  }
+}
+for profile in cloudflare-dot cloudflare-dot-direct cloudflare-udp cloudflare-udp-direct; do
+  assert_profile_normalization "$profile" "$profile"
+done
+assert_profile_normalization dot cloudflare-dot
+assert_profile_normalization udp cloudflare-udp
+assert_profile_normalization 1.1.1.1 cloudflare-udp
+
 normalized_system_dns="$(printf '%s\n' \
   '192.168.50.1, /192.168.50.2 [2001:db8::53], [fe80::1%wlan0]' \
   '127.0.0.1 :: ::1 192.168.50.1' |
@@ -278,7 +293,7 @@ MAGICNET_LAN_DNS_DOMAINS=router.lan,nas.home.arpa
 EOF
 for profile in cloudflare-doh default google-dot default cloudflare-doh; do
   MAGICNET_DNS_PROFILE="$profile" MAGICNET_BOOTSTRAP_DNS=aliyun magicnet_dns_apply_singbox
-  expected=bootstrap-local-dns
+  expected="bootstrap-local-dns"
   [ "$profile" = default ] || expected="${profile%%-*}-profile-dns"
   jq -e --arg expected "$expected" '
     (.dns.rules | length) == 5

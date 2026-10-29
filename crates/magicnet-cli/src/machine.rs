@@ -3,15 +3,15 @@ use std::path::Path;
 
 use serde_json::{json, Value};
 
+use crate::dns::dns_lan_config;
 use crate::{
     clean_module_lines, diagnostics::supervisor_pid, read_kv, service::singbox_webui,
     singbox_pid_summary, webui_api::current_clash_mode, App,
 };
-use crate::dns::dns_lan_config;
 
+mod routing;
 mod subscription;
 mod transparent;
-mod routing;
 
 const MACHINE_SCHEMA: u64 = 1;
 const SELECTED_CORE_CONF: &str = ".config/magicnet/current-core.conf";
@@ -121,9 +121,7 @@ fn machine_value(app: &App, command: &[&str]) -> Result<Value, MachineError> {
         [command, action] if *command == "wifi" && *action == "status" => {
             Ok(wifi_status_value(app))
         }
-        [command, action] if *command == "routing" && *action == "inspect" => {
-            routing::inspect(app)
-        }
+        [command, action] if *command == "routing" && *action == "inspect" => routing::inspect(app),
         _ => Err(MachineError {
             code: "machine.unsupported_command",
             message: "unsupported machine command",
@@ -271,7 +269,9 @@ fn dns_status_value(app: &App) -> Value {
     let lan_effective = lan_configured && lan_dns_effective(app, &lan);
     let (primary, secondary, transport) = match profile.as_str() {
         "cloudflare-udp" | "cloudflare-udp-direct" => ("1.1.1.1", Some("1.0.0.1"), "udp"),
-        "cloudflare-dot" | "cloudflare-dot-direct" => ("tls://1.1.1.1", Some("tls://1.0.0.1"), "dot"),
+        "cloudflare-dot" | "cloudflare-dot-direct" => {
+            ("tls://1.1.1.1", Some("tls://1.0.0.1"), "dot")
+        }
         "cloudflare-doh" | "cloudflare-doh-direct" => (
             "https://cloudflare-dns.com/dns-query",
             Some("https://1.0.0.1/dns-query"),
@@ -283,11 +283,9 @@ fn dns_status_value(app: &App) -> Value {
             "doh",
         ),
         "google-dot" | "google-dot-direct" => ("tls://8.8.8.8", Some("tls://8.8.4.4"), "dot"),
-        "adguard-doh" | "adguard-doh-direct" => (
-            "https://dns.adguard-dns.com/dns-query",
-            None,
-            "doh",
-        ),
+        "adguard-doh" | "adguard-doh-direct" => {
+            ("https://dns.adguard-dns.com/dns-query", None, "doh")
+        }
         "quad9-doh" | "quad9-doh-direct" => (
             "https://dns.quad9.net/dns-query",
             Some("https://149.112.112.112/dns-query"),
@@ -316,10 +314,9 @@ fn dns_status_value(app: &App) -> Value {
 }
 
 fn lan_dns_effective(app: &App, configured: &crate::dns::LanDnsConfig) -> bool {
-    let Some(config) = crate::utils::read_json_file_bounded(
-        &app.moddir.join(SINGBOX_CONFIG),
-        4 * 1024 * 1024,
-    ) else {
+    let Some(config) =
+        crate::utils::read_json_file_bounded(&app.moddir.join(SINGBOX_CONFIG), 4 * 1024 * 1024)
+    else {
         return false;
     };
     let server_ready = config
@@ -329,8 +326,7 @@ fn lan_dns_effective(app: &App, configured: &crate::dns::LanDnsConfig) -> bool {
         .is_some_and(|servers| {
             servers.iter().any(|server| {
                 server.get("tag").and_then(Value::as_str) == Some("magicnet-lan-dns")
-                    && server.get("server").and_then(Value::as_str)
-                        == configured.server.as_deref()
+                    && server.get("server").and_then(Value::as_str) == configured.server.as_deref()
                     && server.get("type").and_then(Value::as_str) == Some("udp")
                     && server.get("server_port").and_then(Value::as_u64) == Some(53)
             })
@@ -375,13 +371,11 @@ fn network_status_value(app: &App) -> Value {
             .map(String::as_str)
             .unwrap_or_default(),
     );
-    let configured_dns_interception = match values
-        .get("MAGICNET_DNS_INTERCEPTION")
-        .map(String::as_str)
-    {
-        Some("off") | Some("0") | Some("false") | Some("disabled") => "off",
-        _ => "on",
-    };
+    let configured_dns_interception =
+        match values.get("MAGICNET_DNS_INTERCEPTION").map(String::as_str) {
+            Some("off") | Some("0") | Some("false") | Some("disabled") => "off",
+            _ => "on",
+        };
 
     let effective =
         crate::utils::read_json_file_bounded(&app.moddir.join(SINGBOX_CONFIG), 4 * 1024 * 1024);
@@ -419,9 +413,9 @@ fn network_status_value(app: &App) -> Value {
             }) {
                 return Some("on");
             }
-            let managed = inbounds.iter().find(|inbound| {
-                inbound.get("tag").and_then(Value::as_str) == Some("tun-in")
-            })?;
+            let managed = inbounds
+                .iter()
+                .find(|inbound| inbound.get("tag").and_then(Value::as_str) == Some("tun-in"))?;
             match managed.get("type").and_then(Value::as_str) {
                 Some("tun") => Some("off"),
                 Some("ebpf") => {
@@ -1018,7 +1012,10 @@ mod tests {
         assert_eq!(value["data"]["lan"]["configured"], true);
         assert_eq!(value["data"]["lan"]["effective"], true);
         assert_eq!(value["data"]["lan"]["server"], "192.168.50.1");
-        assert_eq!(value["data"]["lan"]["domains"], serde_json::json!(["router.lan", "nas.home.arpa"]));
+        assert_eq!(
+            value["data"]["lan"]["domains"],
+            serde_json::json!(["router.lan", "nas.home.arpa"])
+        );
         assert!(!value.to_string().contains("do-not-return"));
         fs::remove_dir_all(root).expect("remove fixture");
     }

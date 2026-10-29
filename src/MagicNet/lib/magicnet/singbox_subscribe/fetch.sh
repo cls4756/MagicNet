@@ -395,7 +395,11 @@ magicnet_singbox_try_fetch_subscription() (
     # Keep one writer open until curl finishes, including failures before curl
     # opens its header output. Close it in both children so the reader sees EOF.
     exec 9<>"$_headers_fifo"
-    (exec 9>&-; head -c 65537 <"$_headers_fifo" | magicnet_singbox_parse_subscription_usage) >"${_download_file}.usage.json" &
+    (
+        exec 8<"$_headers_fifo"
+        exec 9>&-
+        head -c 65537 <&8 | magicnet_singbox_parse_subscription_usage
+    ) >"${_download_file}.usage.json" &
     _headers_pid=$!
     set -- -fsS --noproxy '*' --max-redirs 0 --proto '=https' --proto-redir '=https' \
         --max-filesize "$MAGICNET_SUB_MAX_RESPONSE_BYTES" --dump-header "$_headers_fifo"

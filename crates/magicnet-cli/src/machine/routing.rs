@@ -18,19 +18,76 @@ const INSPECTION_ERROR: MachineError = MachineError {
     message: "unable to inspect the active routing configuration",
 };
 const INTERNAL_TAGS: &[&str] = &[
-    "proxy-auto", "proxy", "select", "lan", "hotspot", "ad-block", "ad-allow", "cn-direct",
-    "chain", "chain-hop1", "chain-exit", "chain-auto", "apple-cn", "microsoft-cn", "google-cn",
-    "icloud", "bing", "dns-guard", "network-test", "ai-proxy", "ai-chatgpt", "ai-chatgpt-auto",
-    "ai-gemini", "ai-gemini-auto", "ai-grok", "ai-grok-auto", "ai-claude", "ai-claude-auto",
-    "proxy-rule", "dev-proxy", "social-proxy", "media-proxy", "game-proxy", "telegram-proxy",
-    "google-proxy", "youtube-proxy", "github-proxy", "discord-proxy", "netflix-proxy",
-    "spotify-proxy", "twitter-proxy", "whatsapp-proxy", "download-direct", "final", "direct", "block",
+    "proxy-auto",
+    "proxy",
+    "select",
+    "lan",
+    "hotspot",
+    "ad-block",
+    "ad-allow",
+    "cn-direct",
+    "chain",
+    "chain-hop1",
+    "chain-exit",
+    "chain-auto",
+    "apple-cn",
+    "microsoft-cn",
+    "google-cn",
+    "icloud",
+    "bing",
+    "dns-guard",
+    "network-test",
+    "ai-proxy",
+    "ai-chatgpt",
+    "ai-chatgpt-auto",
+    "ai-gemini",
+    "ai-gemini-auto",
+    "ai-grok",
+    "ai-grok-auto",
+    "ai-claude",
+    "ai-claude-auto",
+    "proxy-rule",
+    "dev-proxy",
+    "social-proxy",
+    "media-proxy",
+    "game-proxy",
+    "telegram-proxy",
+    "google-proxy",
+    "youtube-proxy",
+    "github-proxy",
+    "discord-proxy",
+    "netflix-proxy",
+    "spotify-proxy",
+    "twitter-proxy",
+    "whatsapp-proxy",
+    "download-direct",
+    "final",
+    "direct",
+    "block",
 ];
 const CONDITION_KEYS: &[&str] = &[
-    "domain", "domain_suffix", "domain_keyword", "domain_regex", "ip_cidr", "ip_is_private",
-    "source_ip_cidr", "source_ip_is_private", "port", "port_range", "source_port",
-    "source_port_range", "protocol", "network", "inbound", "process_name", "process_path",
-    "package_name", "rule_set", "clash_mode", "query_type", "network_type",
+    "domain",
+    "domain_suffix",
+    "domain_keyword",
+    "domain_regex",
+    "ip_cidr",
+    "ip_is_private",
+    "source_ip_cidr",
+    "source_ip_is_private",
+    "port",
+    "port_range",
+    "source_port",
+    "source_port_range",
+    "protocol",
+    "network",
+    "inbound",
+    "process_name",
+    "process_path",
+    "package_name",
+    "rule_set",
+    "clash_mode",
+    "query_type",
+    "network_type",
 ];
 
 pub(super) fn inspect(app: &App) -> Result<Value, MachineError> {
@@ -59,10 +116,7 @@ fn inspect_config(config: &Value, runtime: Option<&Value>) -> Value {
             safe_text(value.get("now")?, MAX_TEXT_LENGTH).map(|selected| (tag.clone(), selected))
         })
         .collect();
-    let outbounds: Vec<&Value> = configured_outbounds
-        .iter()
-        .take(MAX_OUTBOUNDS)
-        .collect();
+    let outbounds: Vec<&Value> = configured_outbounds.iter().take(MAX_OUTBOUNDS).collect();
     let tags: HashSet<&str> = outbounds
         .iter()
         .filter_map(|outbound| outbound.get("tag").and_then(Value::as_str))
@@ -114,11 +168,13 @@ fn inspect_config(config: &Value, runtime: Option<&Value>) -> Value {
         .iter()
         .filter_map(|outbound| {
             let tag = safe_text(outbound.get("tag")?, MAX_TEXT_LENGTH)?;
-            let type_name = safe_text(outbound.get("type")?, 64).unwrap_or_else(|| "unknown".into());
+            let type_name =
+                safe_text(outbound.get("type")?, 64).unwrap_or_else(|| "unknown".into());
             let member_tags = string_members(outbound.get("outbounds"));
             let outbound_references = references.remove(&tag).unwrap_or_default();
             let reference_count = outbound_references.len();
-            let internal = INTERNAL_TAGS.contains(&tag.as_str()) || tag.starts_with("magicnet-chain-");
+            let internal =
+                INTERNAL_TAGS.contains(&tag.as_str()) || tag.starts_with("magicnet-chain-");
             let mut value = json!({
                 "tag": tag,
                 "type": type_name,
@@ -128,7 +184,10 @@ fn inspect_config(config: &Value, runtime: Option<&Value>) -> Value {
                 "references": outbound_references,
                 "reference_count": reference_count,
             });
-            if let Some(default) = outbound.get("default").and_then(|item| safe_text(item, MAX_TEXT_LENGTH)) {
+            if let Some(default) = outbound
+                .get("default")
+                .and_then(|item| safe_text(item, MAX_TEXT_LENGTH))
+            {
                 value["default"] = json!(default);
             }
             if let Some(selected) = runtime_selections.get(&tag) {
@@ -176,7 +235,11 @@ fn inspect_rule(order: usize, rule: &Value) -> Value {
     let managed = rule
         .get("domain_suffix")
         .and_then(Value::as_array)
-        .is_some_and(|values| values.iter().any(|value| value.as_str() == Some("__magicnet_route__")));
+        .is_some_and(|values| {
+            values
+                .iter()
+                .any(|value| value.as_str() == Some("__magicnet_route__"))
+        });
     let outbound = rule
         .get("outbound")
         .and_then(|value| safe_text(value, MAX_TEXT_LENGTH));
@@ -220,12 +283,15 @@ fn safe_condition(value: &Value) -> Value {
 }
 
 fn safe_text(value: &Value, limit: usize) -> Option<String> {
-    value.as_str().map(|text| {
-        text.chars()
-            .filter(|character| !character.is_control())
-            .take(limit)
-            .collect::<String>()
-    }).filter(|text| !text.is_empty())
+    value
+        .as_str()
+        .map(|text| {
+            text.chars()
+                .filter(|character| !character.is_control())
+                .take(limit)
+                .collect::<String>()
+        })
+        .filter(|text| !text.is_empty())
 }
 
 fn string_members(value: Option<&Value>) -> Vec<String> {
@@ -260,16 +326,32 @@ mod tests {
                 "final": "final"
             }
         });
-        let runtime = json!({"proxies": {"proxy": {"now": "node-a"}, "proxy-auto": {"now": "node-a"}}});
+        let runtime =
+            json!({"proxies": {"proxy": {"now": "node-a"}, "proxy-auto": {"now": "node-a"}}});
         let inspected = inspect_config(&config, Some(&runtime));
         assert_eq!(inspected["runtime_state"], "observed");
         assert_eq!(inspected["rules"][0]["order"], 1);
         assert_eq!(inspected["rules"][0]["source"], "magicnet_custom_domain");
         assert_eq!(inspected["rules"][0]["managed_target"], "proxy");
         assert_eq!(inspected["rules"][0]["managed_domains"][0], "example.com");
-        assert_eq!(inspected["rules"][1]["conditions"]["package_name"][0], "com.example.app");
+        assert_eq!(
+            inspected["rules"][1]["conditions"]["package_name"][0],
+            "com.example.app"
+        );
         assert_eq!(inspected["outbounds"][0]["selected"], "node-a");
-        assert_eq!(inspected["outbounds"][0]["reference_count"], 2);
+        assert_eq!(inspected["outbounds"][0]["reference_count"], 1);
+        assert_eq!(
+            inspected["outbounds"][0]["references"],
+            json!([{"kind": "route_rule", "order": 2}])
+        );
+        assert_eq!(inspected["outbounds"][2]["reference_count"], 2);
+        assert_eq!(
+            inspected["outbounds"][2]["references"],
+            json!([
+                {"kind": "outbound_member", "tag": "proxy"},
+                {"kind": "outbound_member", "tag": "proxy-auto"},
+            ])
+        );
         let serialized = serde_json::to_string(&inspected).unwrap();
         assert!(!serialized.contains("test-only-secret"));
         assert!(!serialized.contains("ignored.example"));

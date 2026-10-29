@@ -105,10 +105,7 @@ impl NetworkEventSource {
                 return Ok(false);
             }
             if pollfd.revents & libc::POLLNVAL != 0 {
-                return Err(io::Error::new(
-                    io::ErrorKind::Other,
-                    "netlink event socket became invalid",
-                ));
+                return Err(io::Error::other("netlink event socket became invalid"));
             }
             self.drain();
             return Ok(true);
@@ -176,9 +173,7 @@ pub(crate) fn network_cmd(app: &App, args: &[String]) -> Result<(), String> {
             let policy = NetworkPolicy::from_args(&args[1..], current.dns_interception)?;
             policy.write(app)?;
             if let Err(error) = apply_network_policy(app) {
-                let rollback = current
-                    .write(app)
-                    .and_then(|_| apply_network_policy(app));
+                let rollback = current.write(app).and_then(|_| apply_network_policy(app));
                 if let Err(rollback_error) = rollback {
                     return Err(format!(
                         "network policy apply failed: {error}; rollback failed: {rollback_error}"
@@ -384,7 +379,10 @@ impl NetworkPolicy {
                 ("MAGICNET_IPV6_MODE", self.ipv6_mode.to_string()),
                 ("MAGICNET_TUN_MTU", self.mtu.to_string()),
                 ("MAGICNET_UDP_TIMEOUT", self.udp_timeout.to_string()),
-                ("MAGICNET_DNS_INTERCEPTION", self.dns_interception.to_string()),
+                (
+                    "MAGICNET_DNS_INTERCEPTION",
+                    self.dns_interception.to_string(),
+                ),
             ],
         )
     }

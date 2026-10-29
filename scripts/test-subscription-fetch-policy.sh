@@ -318,6 +318,7 @@ awk() { return 99; }
 magicnet_singbox_pid_owned "$old_core" "$tmp/config.json"
 unset -f awk
 cc -o "$tmp/replacement-sing-box" "$tmp/sing-box.c"
+rm "$MODDIR/bin/sing-box"
 mv "$tmp/replacement-sing-box" "$MODDIR/bin/sing-box"
 magicnet_singbox_pid_owned "$old_core" "$tmp/config.json"
 kill "$old_core"

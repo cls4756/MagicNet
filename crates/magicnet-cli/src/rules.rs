@@ -103,7 +103,9 @@ fn route_edit_domain(app: &App, args: &[String]) -> Result<(), String> {
 fn valid_route_domain(domain: &str) -> bool {
     !domain.is_empty()
         && domain.len() <= 253
-        && !domain.bytes().any(|byte| byte.is_ascii_whitespace() || byte.is_ascii_control())
+        && !domain
+            .bytes()
+            .any(|byte| byte.is_ascii_whitespace() || byte.is_ascii_control())
 }
 
 fn route_apply_and_restart(app: &App) -> Result<(), String> {

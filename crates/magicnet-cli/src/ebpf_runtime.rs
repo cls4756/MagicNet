@@ -177,20 +177,14 @@ fn inspect_local_attachments(
         let target = u32::try_from(cgroup.as_raw_fd()).map_err(|_| "cgroup-fd-invalid")?;
         let ids = query_program_ids(target, attach_type)
             .map_err(|_| format!("cgroup-query-{attach_type}-failed"))?;
-        if !ids
-            .iter()
-            .any(|id| held.contains(id))
-        {
+        if !ids.iter().any(|id| held.contains(id)) {
             return Err(format!("cgroup-attach-{attach_type}-missing"));
         }
     }
     Ok(())
 }
 
-fn inspect_shared_attachment(
-    interface: &str,
-    held: &BTreeSet<u32>,
-) -> Result<(), String> {
+fn inspect_shared_attachment(interface: &str, held: &BTreeSet<u32>) -> Result<(), String> {
     let interface_c = CString::new(interface).map_err(|_| "interface-invalid".to_string())?;
     let index = unsafe { libc::if_nametoindex(interface_c.as_ptr()) };
     if index == 0 {
@@ -198,25 +192,15 @@ fn inspect_shared_attachment(
     }
     let tcx_ingress = query_program_ids(index, BPF_TCX_INGRESS).unwrap_or_default();
     let tcx_egress = query_program_ids(index, BPF_TCX_EGRESS).unwrap_or_default();
-    let tcx_ok = tcx_ingress
-        .iter()
-        .any(|id| held.contains(id))
-        && tcx_egress
-            .iter()
-            .any(|id| held.contains(id));
+    let tcx_ok = tcx_ingress.iter().any(|id| held.contains(id))
+        && tcx_egress.iter().any(|id| held.contains(id));
     if tcx_ok {
         return Ok(());
     }
 
     let ingress = tc_filter_program_ids(interface, "ingress", "sb_share_in")?;
     let egress = tc_filter_program_ids(interface, "egress", "sb_share_out")?;
-    if ingress
-        .iter()
-        .any(|id| held.contains(id))
-        && egress
-            .iter()
-            .any(|id| held.contains(id))
-    {
+    if ingress.iter().any(|id| held.contains(id)) && egress.iter().any(|id| held.contains(id)) {
         Ok(())
     } else {
         Err("tc-ingress-or-egress-missing".to_string())
@@ -306,5 +290,4 @@ mod tests {
         assert_eq!(parse_tc_program_ids(text, "sb_share_in"), vec![42]);
         assert!(parse_tc_program_ids(text, "sb_share_out").is_empty());
     }
-
 }

@@ -1145,14 +1145,15 @@ fn transparent_status(app: &App) -> Result<(), String> {
     }
     let local_expected = matches!(ebpf_mode, "local" | "hybrid");
     let shared_expected = matches!(ebpf_mode, "shared" | "hybrid");
-    let attachments = (effective == "ebpf" && running)
-        .then(|| inspect_ebpf_attachments(
+    let attachments = (effective == "ebpf" && running).then(|| {
+        inspect_ebpf_attachments(
             app,
             local_expected,
             cgroup_path,
             &network,
             &shared_interface_values,
-        ));
+        )
+    });
     let local_cgroup = if effective != "ebpf" || !local_expected {
         "inactive"
     } else if !running {

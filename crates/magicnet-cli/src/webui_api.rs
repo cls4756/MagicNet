@@ -280,7 +280,9 @@ pub(crate) fn hotspot_cmd(app: &App, args: &[String]) -> Result<(), String> {
                 if let Err(error) = run_magicnet_function(app, "magicnet_hotspot_offload_enable") {
                     let rollback = rollback_hotspot_enable(app).err();
                     if let Some(rollback) = rollback {
-                        return Err(format!("enable tether offload: {error}; rollback failed: {rollback}"));
+                        return Err(format!(
+                            "enable tether offload: {error}; rollback failed: {rollback}"
+                        ));
                     }
                     return Err(format!("enable tether offload: {error}"));
                 }
@@ -309,21 +311,27 @@ pub(crate) fn hotspot_cmd(app: &App, args: &[String]) -> Result<(), String> {
                 if let Err(error) = apply_config(app) {
                     let rollback = rollback_hotspot_enable(app).err();
                     if let Some(rollback) = rollback {
-                        return Err(format!("apply hotspot TUN policy: {error}; rollback failed: {rollback}"));
+                        return Err(format!(
+                            "apply hotspot TUN policy: {error}; rollback failed: {rollback}"
+                        ));
                     }
                     return Err(format!("apply hotspot TUN policy: {error}"));
                 }
                 if let Err(error) = run_magicnet_function(app, "magicnet_hotspot_reconcile") {
                     let rollback = rollback_hotspot_enable(app).err();
                     if let Some(rollback) = rollback {
-                        return Err(format!("apply hotspot TUN route: {error}; rollback failed: {rollback}"));
+                        return Err(format!(
+                            "apply hotspot TUN route: {error}; rollback failed: {rollback}"
+                        ));
                     }
                     return Err(format!("apply hotspot TUN route: {error}"));
                 }
                 if let Err(error) = run_magicnet_function(app, "magicnet_hotspot_watchdog_start") {
                     let rollback = rollback_hotspot_enable(app).err();
                     if let Some(rollback) = rollback {
-                        return Err(format!("start hotspot route watcher: {error}; rollback failed: {rollback}"));
+                        return Err(format!(
+                            "start hotspot route watcher: {error}; rollback failed: {rollback}"
+                        ));
                     }
                     return Err(format!("start hotspot route watcher: {error}"));
                 }
@@ -334,21 +342,27 @@ pub(crate) fn hotspot_cmd(app: &App, args: &[String]) -> Result<(), String> {
                 if let Err(error) = stop_result.and(cleanup_result) {
                     let rollback = rollback_hotspot_disable(app).err();
                     if let Some(rollback) = rollback {
-                        return Err(format!("disable hotspot route: {error}; rollback failed: {rollback}"));
+                        return Err(format!(
+                            "disable hotspot route: {error}; rollback failed: {rollback}"
+                        ));
                     }
                     return Err(format!("disable hotspot route: {error}"));
                 }
                 if let Err(error) = run_magicnet_function(app, "magicnet_hotspot_offload_restore") {
                     let rollback = rollback_hotspot_disable(app).err();
                     if let Some(rollback) = rollback {
-                        return Err(format!("restore tether offload: {error}; rollback failed: {rollback}"));
+                        return Err(format!(
+                            "restore tether offload: {error}; rollback failed: {rollback}"
+                        ));
                     }
                     return Err(format!("restore tether offload: {error}"));
                 }
                 if let Err(error) = refresh_hotspot_policy_if_stale(app) {
                     let rollback = rollback_hotspot_disable(app).err();
                     if let Some(rollback) = rollback {
-                        return Err(format!("refresh hotspot policy: {error}; rollback failed: {rollback}"));
+                        return Err(format!(
+                            "refresh hotspot policy: {error}; rollback failed: {rollback}"
+                        ));
                     }
                     return Err(format!("refresh hotspot policy: {error}"));
                 }

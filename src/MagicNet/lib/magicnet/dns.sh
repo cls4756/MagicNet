@@ -13,8 +13,8 @@ magicnet_dns_profile() {
     cloudflare-dot | cloudflare-dot-direct) printf '%s\n' "${_profile:-default}" ;;
     cloudflare-udp | cloudflare-udp-direct) printf '%s\n' "${_profile:-default}" ;;
     cloudflare | doh) printf '%s\n' "cloudflare-doh" ;;
-    cloudflare-dot | dot) printf '%s\n' "cloudflare-dot" ;;
-    cloudflare-udp | udp | 1.1.1.1) printf '%s\n' "cloudflare-udp" ;;
+    dot) printf '%s\n' "cloudflare-dot" ;;
+    udp | 1.1.1.1) printf '%s\n' "cloudflare-udp" ;;
     google-doh | google-doh-direct | google) printf '%s\n' "${_profile:-google-doh}" ;;
     google-dot | google-dot-direct) printf '%s\n' "${_profile:-google-dot}" ;;
     adguard-doh | adguard-doh-direct | adguard) printf '%s\n' "${_profile:-adguard-doh}" ;;

@@ -11,8 +11,8 @@ use crate::diagnostics_dns::dns_leak_check;
 use crate::diagnostics_routing::routing_policy_check;
 use crate::{
     clean_module_lines, cmdline_has_command, cmdline_has_script, command_text_timeout,
-    ebpf_runtime::inspect_ebpf_attachments, mcp, pid_summary, read_proc_argv,
-    read_kv, run_magicnet_function, singbox_pid_summary, App,
+    ebpf_runtime::inspect_ebpf_attachments, mcp, pid_summary, read_kv, read_proc_argv,
+    run_magicnet_function, singbox_pid_summary, App,
 };
 
 pub(crate) fn health(app: &App) -> Result<(), String> {
@@ -824,7 +824,12 @@ fn dns_capture_profile_is_direct_udp(app: &App) -> bool {
                 (key.trim() == "MAGICNET_DNS_PROFILE").then(|| value.trim().to_string())
             })
         })
-        .is_some_and(|profile| matches!(profile.as_str(), "cloudflare-udp" | "cloudflare-udp-direct" | "udp" | "1.1.1.1"))
+        .is_some_and(|profile| {
+            matches!(
+                profile.as_str(),
+                "cloudflare-udp" | "cloudflare-udp-direct" | "udp" | "1.1.1.1"
+            )
+        })
 }
 
 fn dns_capture_family_rules(program: &str) -> Option<(bool, bool, bool, bool)> {

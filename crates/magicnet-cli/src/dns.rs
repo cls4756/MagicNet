@@ -149,7 +149,8 @@ fn dns_bootstrap_cmd(app: &App, args: &[String]) -> Result<(), String> {
             Ok(())
         }
         "set" => {
-            let bootstrap = normalize_bootstrap(args.get(1).map(String::as_str).unwrap_or_default())?;
+            let bootstrap =
+                normalize_bootstrap(args.get(1).map(String::as_str).unwrap_or_default())?;
             update_dns_config(app, None, Some(bootstrap), None)?;
             println!("[info] Bootstrap DNS set to {bootstrap}");
             Ok(())
@@ -175,7 +176,10 @@ fn dns_lan_cmd(app: &App, args: &[String]) -> Result<(), String> {
                 domains: normalize_lan_domains(&args[2..].join(","))?,
             };
             update_dns_config(app, None, None, Some(&config))?;
-            println!("[info] LAN DNS configured for {} domain(s)", config.domains.len());
+            println!(
+                "[info] LAN DNS configured for {} domain(s)",
+                config.domains.len()
+            );
             Ok(())
         }
         "clear" if args.len() == 1 => {
@@ -202,9 +206,7 @@ fn update_dns_config(
     let bootstrap = bootstrap
         .map(ToOwned::to_owned)
         .unwrap_or_else(|| dns_bootstrap(app));
-    let lan = lan_override
-        .cloned()
-        .unwrap_or_else(|| dns_lan_config(app));
+    let lan = lan_override.cloned().unwrap_or_else(|| dns_lan_config(app));
     let via_proxy = values
         .get("MAGICNET_DNS_VIA_PROXY")
         .map(String::as_str)
@@ -215,7 +217,10 @@ fn update_dns_config(
     );
     if let Some(server) = lan.server.as_deref() {
         text.push_str(&format!("MAGICNET_LAN_DNS_SERVER={server}\n"));
-        text.push_str(&format!("MAGICNET_LAN_DNS_DOMAINS={}\n", lan.domains.join(",")));
+        text.push_str(&format!(
+            "MAGICNET_LAN_DNS_DOMAINS={}\n",
+            lan.domains.join(",")
+        ));
     }
     write_text_file(app, Path::new(DNS_CONF), &text)?;
     if let Err(error) = run_magicnet_function(app, "magicnet_dns_apply") {
@@ -350,8 +355,7 @@ pub(crate) fn normalize_lan_server(server: &str) -> Result<String, String> {
         IpAddr::V4(address) => address.is_private() || address.is_link_local(),
         IpAddr::V6(address) => {
             let octets = address.octets();
-            (octets[0] & 0xfe) == 0xfc
-                || (octets[0] == 0xfe && (octets[1] & 0xc0) == 0x80)
+            (octets[0] & 0xfe) == 0xfc || (octets[0] == 0xfe && (octets[1] & 0xc0) == 0x80)
         }
     };
     if !is_lan || address.is_loopback() || address.is_unspecified() || address.is_multicast() {
