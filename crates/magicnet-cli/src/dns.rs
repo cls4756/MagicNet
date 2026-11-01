@@ -25,6 +25,7 @@ pub(crate) fn dns_cmd(app: &App, args: &[String]) -> Result<(), String> {
         "bootstrap" => dns_bootstrap_cmd(app, &args[1..]),
         "lan" => dns_lan_cmd(app, &args[1..]),
         "rules" => crate::dns_rules::command(app, &args[1..]),
+        "custom" => crate::dns_custom::command(app, &args[1..]),
         "test" => dns_test(args.get(1).map(String::as_str).unwrap_or("www.gstatic.com")),
         "apply" => {
             run_magicnet_function(app, "magicnet_dns_apply")?;
@@ -126,6 +127,10 @@ fn dns_status(app: &App) {
             println!("secondary=https://149.112.112.112/dns-query");
             println!("transport=doh");
         }
+        "custom-doh" => {
+            println!("primary=custom-profile-dns");
+            println!("transport=doh");
+        }
         _ => {
             println!("primary=bootstrap-local-dns");
             println!("transport=default");
@@ -135,6 +140,9 @@ fn dns_status(app: &App) {
 
 fn dns_set(app: &App, profile: &str) -> Result<(), String> {
     let profile = normalize_profile(profile)?;
+    if profile == "custom-doh" && crate::dns_custom::load(app)?.is_none() {
+        return Err("configure custom DoH before selecting this profile".to_string());
+    }
     update_dns_config(app, Some(profile), None, None)?;
     println!("[info] DNS profile set to {profile}");
     Ok(())
@@ -259,6 +267,7 @@ fn restore_dns_config(app: &App, previous: Option<&[u8]>) -> Result<(), String> 
 fn normalize_profile(profile: &str) -> Result<&'static str, String> {
     match profile {
         "default" | "system" | "local" => Ok("default"),
+        "custom-doh" => Ok("custom-doh"),
         // Cloudflare profiles - preserve -direct suffix
         "cloudflare" | "cloudflare-doh" | "1.1.1.1-doh" | "doh" => Ok("cloudflare-doh"),
         "cloudflare-doh-direct" => Ok("cloudflare-doh-direct"),
@@ -394,6 +403,12 @@ fn valid_lan_domain(domain: &str) -> bool {
 }
 
 fn dns_via_proxy(app: &App, profile: &str) -> bool {
+    if profile == "custom-doh" {
+        return crate::dns_custom::load(app)
+            .ok()
+            .flatten()
+            .is_some_and(|custom| custom.via_proxy);
+    }
     if profile.ends_with("-direct") {
         return false;
     }
@@ -413,9 +428,10 @@ fn bootstrap_transport(bootstrap: &str) -> &'static str {
 }
 
 fn dns_usage() -> String {
-    "Usage: cli dns {status|set <profile>|bootstrap {status|set <system|aliyun|baidu|tencent>}|lan {status|set <gateway> <domain,...>|clear}|rules save-file <webui-payload-path>|test [domain]|apply}\n\
+    "Usage: cli dns {status|set <profile>|bootstrap {status|set <system|aliyun|baidu|tencent>}|lan {status|set <gateway> <domain,...>|clear}|rules save-file <webui-payload-path>|custom save-file <webui-payload-path>|test [domain]|apply}\n\
      Available profiles:\n\
      - default\n\
+     - custom-doh (configure with dns custom save-file)\n\
      - cloudflare-doh [direct: cloudflare-doh-direct]\n\
      - cloudflare-dot [direct: cloudflare-dot-direct]\n\
      - cloudflare-udp [direct: cloudflare-udp-direct]\n\

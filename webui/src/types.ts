@@ -92,6 +92,7 @@ export type BlocklistState = {
 
 export type DnsProfile =
   | "default"
+  | "custom-doh"
   | "cloudflare-doh"
   | "cloudflare-doh-direct"
   | "cloudflare-dot"
@@ -112,7 +113,7 @@ export type DnsState = {
   primary: string;
   secondary: string;
   transport: string;
-  viaProxy: boolean;
+  viaProxy: boolean | null;
   bootstrap: "system" | "aliyun" | "baidu" | "tencent";
   bootstrapTransport: "doh" | "udp";
   lan: {

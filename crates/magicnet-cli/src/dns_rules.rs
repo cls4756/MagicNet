@@ -557,11 +557,12 @@ fn feature_rule(rule: &Value, feature_servers: &HashSet<String>) -> bool {
         .is_some_and(|server| feature_servers.contains(server))
 }
 
-fn normalized_server(server: &str) -> String {
+pub(crate) fn normalized_server(server: &str) -> String {
     if server == PROFILE_SERVER
         || server == "default-remote-dns"
         || server == "doh-cloudflare"
         || server == "doh-google"
+        || server == "custom-profile-dns"
         || ["cloudflare", "google", "adguard", "quad9"]
             .iter()
             .any(|provider| {

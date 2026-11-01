@@ -119,6 +119,20 @@ MagicNet 全局接管应用 DNS，但把两个职责分开配置：
 - DNS Profile 控制应用查询最终使用的解析器；订阅模板中的 `doh-cloudflare`、`doh-google` 等策略标签会改写到当前 profile。
 - Bootstrap DNS 负责默认本地解析以及代理节点域名解析，避免代理解析依赖代理本身形成循环。
 
+### 自定义 DoH
+
+在 WebUI「设置 → DNS 设置」的应用 DNS 下拉框选择「自定义 DoH」，填写
+`https://dns.example/dns-query`，选择「通过代理」或「直连」，再确认「校验并应用」。
+支持自定义端口、IPv4/IPv6、路径及查询参数；未提供路径时使用 `/dns-query`。
+仅允许 HTTPS，不接受用户名/密码或 URL 片段，TLS 证书始终校验。
+DoH 域名通过当前 Bootstrap DNS 引导解析，代理节点域名也仍由 Bootstrap DNS 解析。
+DNS 规则中的「应用 DNS Profile」会随选择使用自定义 DoH；显式 Bootstrap 规则不变。
+保存前执行完整 sing-box 配置校验，失败不发布用户意图，应用失败尝试恢复旧配置。
+配置校验不是网络可达性测试；保存后可用 DNS 测试检查当前网络实际解析。
+切换回预设 DNS 后保留自定义地址，供下次编辑使用。私密地址不进入公开状态或操作报告。
+
+### Bootstrap DNS
+
 Bootstrap DNS 可选 `system|aliyun|baidu|tencent`：
 
 ```bash

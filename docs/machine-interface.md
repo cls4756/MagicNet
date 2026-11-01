@@ -38,6 +38,21 @@ The process still exits non-zero for an error. Consumers should therefore preser
 
 ## Capabilities
 
+Custom DoH support advertises feature `custom_doh` and private read command
+`dns.custom.inspect`. Clients must negotiate both before opening its editor.
+
+`cli --json dns custom inspect` returns `command="dns.custom.inspect"`, with
+`configured`, `url` (null when absent), `via_proxy`, and a revision. This explicit
+private configuration inspection may contain sensitive URL paths/query values;
+do not use it for polling, canonical status, logs, or copied diagnostics.
+`dns.status` only reports the stable `custom-profile-dns` tag, transport `doh`,
+and `custom_doh.configured` (null when observation fails), never the endpoint.
+The existing MCP `magicnet_dns_inspect` remains rule-only and does not expose
+the new private endpoint. `cli dns custom save-file <webui-payload-path>` is a
+human write command using private `{schema:1,revision,url,via_proxy}` payloads,
+the same lock order and native validation as DNS rule edits. No JSON write
+command is introduced; machine-mode writes remain rejected.
+
 ```sh
 /data/adb/modules/MagicNet/cli --json capabilities
 ```
@@ -55,6 +70,7 @@ supervisor.status
 transparent.status
 dns.status
 dns.inspect
+dns.custom.inspect
 network.status
 domain-forward.status
 sub.status

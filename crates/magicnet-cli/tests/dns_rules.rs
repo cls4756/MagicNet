@@ -72,7 +72,9 @@ magicnet_apply_runtime_config() {
         printf '%s\n' 'partial-materialization' >"$MODDIR/.config/sing-box/config.json"
         return 1
     fi
-    if grep -q edited.invalid "$MODDIR/.config/magicnet/dns-rules.json" 2>/dev/null; then
+    if grep -q '^MAGICNET_DNS_PROFILE=custom-doh$' "$MODDIR/.config/magicnet/dns.conf" 2>/dev/null; then
+        cp "$MODDIR/validated.json" "$MODDIR/.config/sing-box/config.json"
+    elif grep -q edited.invalid "$MODDIR/.config/magicnet/dns-rules.json" 2>/dev/null; then
         cp "$MODDIR/expected.json" "$MODDIR/.config/sing-box/config.json"
     else
         cp "$MODDIR/original.json" "$MODDIR/.config/sing-box/config.json"
@@ -95,6 +97,10 @@ while [ "$#" -gt 0 ]; do
   esac
 done
 [ -r "$config" ] && [ -r "$data/rules/required.srs" ] || exit 1
+cp "$config" "$MODDIR/validated.json"
+if [ -e "$MODDIR/mutate-during-validation" ]; then
+  printf '\n' >>"$MODDIR/.config/magicnet/dns.conf"
+fi
 [ ! -e "$MODDIR/fail-validation" ]
 "#,
         )
@@ -163,6 +169,22 @@ done
     fn save(&self, path: &std::path::Path) -> Output {
         self.run(&["dns", "rules", "save-file", path.to_str().unwrap()])
     }
+    fn stage_custom(&self, url: &str, via_proxy: bool) -> PathBuf {
+        let output = self.run(&["--json", "dns", "custom", "inspect"]);
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let snapshot: Value = serde_json::from_slice(&output.stdout).unwrap();
+        let path = self.root.join(".tmp/webui-payload/custom.json");
+        fs::write(&path, json!({"schema":1,"revision":snapshot["data"]["revision"],"url":url,"via_proxy":via_proxy}).to_string()).unwrap();
+        path
+    }
+
+    fn save_custom(&self, path: &std::path::Path) -> Output {
+        self.run(&["dns", "custom", "save-file", path.to_str().unwrap()])
+    }
     fn config(&self) -> Vec<u8> {
         fs::read(self.root.join(".config/sing-box/config.json")).unwrap()
     }
@@ -171,6 +193,168 @@ done
 impl Drop for Fixture {
     fn drop(&mut self) {
         let _ = fs::remove_dir_all(&self.root);
+    }
+}
+
+#[test]
+fn custom_doh_saves_privately_under_both_locks_and_preserves_bootstrap_rules() {
+    for via_proxy in [true, false] {
+        let fixture = Fixture::new();
+        let url = "https://resolver.example:8443/private/dns?key=private-fixture";
+        let path = fixture.stage_custom(url, via_proxy);
+        let output = fixture.save_custom(&path);
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let config: Value = serde_json::from_slice(&fixture.config()).unwrap();
+        let custom = config["dns"]["servers"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|server| server["tag"] == "custom-profile-dns")
+            .unwrap();
+        assert_eq!(custom["server_port"], 8443);
+        assert_eq!(custom["path"], "/private/dns?key=private-fixture");
+        assert_eq!(custom["tls"]["server_name"], "resolver.example");
+        assert_eq!(custom["domain_resolver"]["server"], "bootstrap-local-dns");
+        assert_eq!(
+            custom["detour"],
+            if via_proxy {
+                json!("proxy")
+            } else {
+                Value::Null
+            }
+        );
+        assert_eq!(
+            custom["routing_mark"],
+            if via_proxy {
+                Value::Null
+            } else {
+                json!(1073741824)
+            }
+        );
+        assert_eq!(config["dns"]["rules"][1]["server"], "bootstrap-local-dns");
+        assert_eq!(config["dns"]["rules"][0]["server"], "custom-profile-dns");
+        assert_eq!(config["dns"]["final"], "custom-profile-dns");
+        let intent_path = fixture.root.join(".config/magicnet/dns-custom.json");
+        assert_eq!(
+            fs::metadata(intent_path).unwrap().permissions().mode() & 0o777,
+            0o600
+        );
+        let inspection = fixture.run(&["--json", "dns", "custom", "inspect"]);
+        let inspection: Value = serde_json::from_slice(&inspection.stdout).unwrap();
+        assert_eq!(inspection["data"]["url"], url);
+        assert_eq!(inspection["data"]["via_proxy"], via_proxy);
+        let status = fixture.run(&["--json", "dns", "status"]);
+        let public_text = String::from_utf8_lossy(&status.stdout);
+        assert!(
+            !public_text.contains("private-fixture") && !public_text.contains("resolver.example")
+        );
+        let status: Value = serde_json::from_slice(&status.stdout).unwrap();
+        assert_eq!(status["data"]["profile"], "custom-doh");
+        assert_eq!(status["data"]["custom_doh"]["configured"], true);
+        let rules = fixture.run(&["--json", "dns", "inspect"]);
+        let rules: Value = serde_json::from_slice(&rules.stdout).unwrap();
+        assert_eq!(
+            rules["data"]["rules"][0]["target"],
+            "__magicnet_dns_profile__"
+        );
+        assert!(!fixture.root.join(".state/config.lock").exists());
+    }
+}
+
+#[test]
+fn custom_doh_validation_revision_and_lock_failures_do_not_publish_intent() {
+    for failure in [
+        "url",
+        "stale",
+        "validation",
+        "during-validation",
+        "subscription",
+        "transparent",
+        "json-write",
+    ] {
+        let fixture = Fixture::new();
+        let url = if failure == "url" {
+            "https://user:private-fixture@dns.example/dns"
+        } else {
+            "https://resolver.example/dns-query"
+        };
+        let path = fixture.stage_custom(url, true);
+        match failure {
+            "stale" => fs::write(
+                fixture.root.join(".config/magicnet/dns.conf"),
+                "MAGICNET_DNS_PROFILE=default\n",
+            )
+            .unwrap(),
+            "validation" => fs::write(fixture.root.join("fail-validation"), "1").unwrap(),
+            "during-validation" => {
+                fs::write(fixture.root.join("mutate-during-validation"), "1").unwrap()
+            }
+            "subscription" => fs::create_dir_all(
+                fixture
+                    .root
+                    .join(".state/sing-box/subscription-update.lock"),
+            )
+            .unwrap(),
+            "transparent" => {
+                fs::create_dir_all(fixture.root.join(".state/transparent-transaction")).unwrap()
+            }
+            _ => (),
+        }
+        let original = fixture.config();
+        let output = if failure == "json-write" {
+            fixture.run(&[
+                "--json",
+                "dns",
+                "custom",
+                "save-file",
+                path.to_str().unwrap(),
+            ])
+        } else {
+            fixture.save_custom(&path)
+        };
+        assert!(!output.status.success(), "{failure}");
+        assert!(
+            !fixture
+                .root
+                .join(".config/magicnet/dns-custom.json")
+                .exists(),
+            "{failure}"
+        );
+        assert!(
+            !fs::read_to_string(fixture.root.join(".config/magicnet/dns.conf"))
+                .unwrap()
+                .contains("custom-doh")
+        );
+        assert_eq!(fixture.config(), original, "{failure}");
+        assert!(!String::from_utf8_lossy(&output.stderr).contains("private-fixture"));
+    }
+}
+
+#[test]
+fn custom_doh_apply_failure_restores_absent_and_existing_private_intent() {
+    for existing in [false, true] {
+        let fixture = Fixture::new();
+        let custom_path = fixture.root.join(".config/magicnet/dns-custom.json");
+        if existing {
+            fs::write(&custom_path, json!({"schema":1,"server":"old.example","server_port":443,"path":"/dns-query","via_proxy":false}).to_string()).unwrap();
+        } else {
+            fs::remove_file(fixture.root.join(".config/magicnet/dns.conf")).unwrap();
+        }
+        let previous_custom = fs::read(&custom_path).ok();
+        let dns_path = fixture.root.join(".config/magicnet/dns.conf");
+        let previous_dns = fs::read(&dns_path).ok();
+        let original = fixture.config();
+        let path = fixture.stage_custom("https://new.example/dns-query", true);
+        fs::write(fixture.root.join("fail-apply"), "1").unwrap();
+        assert!(!fixture.save_custom(&path).status.success());
+        assert!(!fixture.root.join("fail-apply").exists());
+        assert_eq!(fs::read(custom_path).ok(), previous_custom);
+        assert_eq!(fs::read(dns_path).ok(), previous_dns);
+        assert_eq!(fixture.config(), original);
     }
 }
 

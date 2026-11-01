@@ -9,6 +9,7 @@ magicnet_dns_profile() {
     fi
     case "${_profile:-default}" in
     default) printf '%s\n' "default" ;;
+    custom-doh) printf '%s\n' "custom-doh" ;;
     cloudflare-doh | cloudflare-doh-direct) printf '%s\n' "${_profile:-default}" ;;
     cloudflare-dot | cloudflare-dot-direct) printf '%s\n' "${_profile:-default}" ;;
     cloudflare-udp | cloudflare-udp-direct) printf '%s\n' "${_profile:-default}" ;;
@@ -199,6 +200,16 @@ magicnet_dns_apply_singbox() {
         return 1
     }
     _dns_rules_input=/dev/null
+    _custom_doh_input=/dev/null
+    if [ "$_profile" = custom-doh ]; then
+        _custom_doh_input="${MODDIR}/.config/magicnet/dns-custom.json"
+        if [ ! -f "$_custom_doh_input" ] || [ -L "$_custom_doh_input" ] ||
+            [ "$(wc -c <"$_custom_doh_input")" -gt 8192 ]; then
+            magicnet_warn "custom DoH configuration is missing or invalid"
+            unset _profile _bootstrap _bootstrap_server _bootstrap_type _bootstrap_sni _config _jq _dns_rules_input _custom_doh_input
+            return 1
+        fi
+    fi
     _dns_rules_conf="${MODDIR}/.config/magicnet/dns-rules.json"
     if [ -e "$_dns_rules_conf" ] || [ -L "$_dns_rules_conf" ]; then
         if [ ! -f "$_dns_rules_conf" ] || [ -L "$_dns_rules_conf" ] ||
@@ -264,6 +275,7 @@ magicnet_dns_apply_singbox() {
         --arg bootstrap_server "$_bootstrap_server" --arg bootstrap_type "$_bootstrap_type" --arg bootstrap_sni "$_bootstrap_sni" \
         --arg lan_server "$_lan_server" --argjson lan_domains "$_lan_domains_json" \
         --slurpfile dns_rules_documents "$_dns_rules_input" \
+        --slurpfile custom_doh_documents "$_custom_doh_input" \
         --argjson dns_capture_singbox_mark "$(magicnet_dns_capture_singbox_mark)" --argjson via_proxy "$_via_proxy" -e '
       # Build a DNS server definition for a given provider and transport.
       # When via_proxy is true, the server uses detour:"proxy" so queries
@@ -287,6 +299,25 @@ magicnet_dns_apply_singbox() {
         else
           {"type":"https","tag":$tag,"server":$server,"server_port":443,"routing_mark":$mark,"path":$path,"tls":{"server_name":$sni}}
         end;
+      def custom_doh:
+        $custom_doh_documents
+        | if length != 1 then error("invalid custom DoH configuration") else .[0] end
+        | if .schema == 1 and ((keys - ["schema","server","server_port","path","via_proxy"]) | length == 0)
+          and (.server | type) == "string" and (.server | length) > 0 and (.server | length) <= 253
+          and (.server | test("^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*|[0-9a-f:.]+)$"))
+          and (.server_port | type) == "number" and .server_port >= 1 and .server_port <= 65535 and (.server_port | floor) == .server_port
+          and (.path | type) == "string" and (.path | startswith("/")) and (.path | length) <= 2048
+          and (.path | test("[[:space:][:cntrl:]#\\\\\"<>`{}|^]|%(0[0-9a-f]|1[0-9a-f]|7f)"; "i") | not)
+          and (.path | gsub("%[0-9A-Fa-f]{2}"; "") | contains("%") | not)
+          and (.via_proxy | type) == "boolean"
+          then . else error("invalid custom DoH configuration") end;
+      def make_custom_https:
+        custom_doh as $custom
+        | make_https("custom-profile-dns"; $custom.server; $custom.path; $custom.server; $custom.via_proxy; $dns_capture_singbox_mark)
+        | .server_port = $custom.server_port
+        | .domain_resolver = {"server":"bootstrap-local-dns"}
+        | if ($custom.server | contains(":")) and $custom.server_port == 443
+          then .headers = {"Host":("[" + $custom.server + "]")} else . end;
       # Provider configuration table: maps profile -> provider details
       def provider_for($profile):
         if $profile == "default" then {tag_prefix:"bootstrap-local-dns",via_proxy:false}
@@ -306,14 +337,15 @@ magicnet_dns_apply_singbox() {
         ["bootstrap-local-dns","default-remote-dns","doh-cloudflare","doh-google",
          "cloudflare-profile-dns","cloudflare-backup-dns",
          "google-profile-dns","google-backup-dns","adguard-profile-dns","adguard-backup-dns",
-         "quad9-profile-dns","quad9-backup-dns"];
+         "quad9-profile-dns","quad9-backup-dns","custom-profile-dns"];
       def lan_dns_tag: "magicnet-lan-dns";
       def rewrite_rule_tags:
         ["__magicnet_dns_profile__","default-remote-dns","doh-cloudflare","doh-google",
          "cloudflare-profile-dns","cloudflare-backup-dns","google-profile-dns","google-backup-dns",
-         "adguard-profile-dns","adguard-backup-dns","quad9-profile-dns","quad9-backup-dns"];
+         "adguard-profile-dns","adguard-backup-dns","quad9-profile-dns","quad9-backup-dns","custom-profile-dns"];
       def profile_dns_tag:
         if $profile == "default" then "bootstrap-local-dns"
+        elif $profile == "custom-doh" then "custom-profile-dns"
         else (provider_for($profile)).tag_prefix + "-profile-dns" end;
       # Resolve which transport to use based on profile suffix
       def transport_for($profile):
@@ -343,6 +375,7 @@ magicnet_dns_apply_singbox() {
         (.dns.servers // [])
         | map(select((.tag // "") as $tag | ((managed_tags | index($tag)) == null and $tag != lan_dns_tag)))
         | (if $profile == "default" then [default_bootstrap]
+           elif $profile == "custom-doh" then [default_bootstrap, make_custom_https]
            else
              (provider_for($profile) | . as $provider |
               (transport_for($profile) | . as $transport |
@@ -399,7 +432,7 @@ magicnet_dns_apply_singbox() {
         else . end
     ' "$_config"
     _rc=$?
-    unset _profile _bootstrap _bootstrap_server _bootstrap_type _bootstrap_sni _config _jq _tmp _via_proxy _dns_rules_input _dns_rules_conf
+    unset _profile _bootstrap _bootstrap_server _bootstrap_type _bootstrap_sni _config _jq _tmp _via_proxy _dns_rules_input _dns_rules_conf _custom_doh_input
     unset _lan_server _lan_domains _lan_domains_json
     return "$_rc"
 }

@@ -75,6 +75,7 @@ export function parseMachineDns(text: string): DnsState | null {
   const data = decodeMachineData(text, "dns.status");
   const validProfiles = [
     "default",
+    "custom-doh",
     "cloudflare-doh", "cloudflare-doh-direct",
     "cloudflare-dot", "cloudflare-dot-direct",
     "cloudflare-udp", "cloudflare-udp-direct",
@@ -107,7 +108,7 @@ export function parseMachineDns(text: string): DnsState | null {
     primary: data.primary,
     secondary: data.secondary ?? "",
     transport: data.transport,
-    viaProxy: data.via_proxy !== null && data.via_proxy !== undefined ? Boolean(data.via_proxy) : true,
+    viaProxy: typeof data.via_proxy === "boolean" ? data.via_proxy : data.profile === "custom-doh" ? null : true,
     bootstrap: data.bootstrap_configured as DnsState["bootstrap"],
     bootstrapTransport: data.bootstrap_transport as DnsState["bootstrapTransport"],
     lan: {

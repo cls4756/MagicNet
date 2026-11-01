@@ -11,6 +11,7 @@ export type DnsProfilePlan = {
 
 const PROFILE_LABELS: Record<string, string> = {
   default: "跟随 Bootstrap DNS",
+  "custom-doh": "自定义 DoH",
   "cloudflare-doh": "Cloudflare DoH",
   "cloudflare-dot": "Cloudflare DoT",
   "cloudflare-udp": "Cloudflare UDP"
@@ -60,17 +61,18 @@ function normalizeDnsProfile(profile: string): string {
   if (["cloudflare", "doh", "1.1.1.1-doh"].includes(profile)) return "cloudflare-doh";
   if (["dot", "1.1.1.1-dot"].includes(profile)) return "cloudflare-dot";
   if (["udp", "1.1.1.1"].includes(profile)) return "cloudflare-udp";
-  return ["cloudflare-doh", "cloudflare-dot", "cloudflare-udp"].includes(profile) ? profile : "default";
+  return ["cloudflare-doh", "cloudflare-dot", "cloudflare-udp", "custom-doh"].includes(profile) ? profile : "default";
 }
 
 function dnsTransport(profile: string): string {
-  if (profile === "cloudflare-doh") return "doh";
+  if (profile === "cloudflare-doh" || profile === "custom-doh") return "doh";
   if (profile === "cloudflare-dot") return "dot";
   if (profile === "cloudflare-udp") return "udp";
   return "default";
 }
 
 function dnsServers(profile: string): { primary: string; secondary: string } {
+  if (profile === "custom-doh") return { primary: "custom-profile-dns", secondary: "" };
   if (profile === "default") return { primary: "bootstrap-local-dns", secondary: "" };
   if (profile === "cloudflare-doh") return { primary: "https://cloudflare-dns.com/dns-query", secondary: "https://1.0.0.1/dns-query" };
   if (profile === "cloudflare-dot") return { primary: "tls://1.1.1.1", secondary: "tls://1.0.0.1" };

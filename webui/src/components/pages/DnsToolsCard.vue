@@ -12,6 +12,7 @@ import { copyText, execFailed } from "@/utils";
 import { buildDnsProfilePlan, formatDnsProfilePlanReport } from "./dnsProfilePlan";
 import { dnsStatusTone, formatDnsTestReport, parseDnsTestSummary } from "./dnsTestSummary";
 import ToolActionConfirmCard from "./ToolActionConfirmCard.vue";
+import CustomDohSettings from "./CustomDohSettings.vue";
 import type { PendingToolAction } from "./toolActions";
 
 const { state, runCli, refreshDns: refreshDnsStatus, refreshNetwork, shellQuote } = useMagicNet();
@@ -24,6 +25,7 @@ const runningDomain = ref("");
 const pendingDnsAction = ref<PendingToolAction | null>(null);
 const pendingDnsCurrentProfile = ref("");
 const pendingDnsProfile = ref("");
+const customDohSelected = ref(false);
 const dnsInterception = ref<"on" | "off">("on");
 const effectiveDnsInterception = ref("unavailable");
 const networkPolicyLoaded = ref(false);
@@ -133,6 +135,12 @@ function setDnsInterception(interception: string): void {
 }
 
 function setDnsProfile(profile: string): void {
+  customDohSelected.value = profile === "custom-doh";
+  if (customDohSelected.value) {
+    pendingDnsAction.value = null;
+    pendingDnsProfile.value = "";
+    return;
+  }
   pendingDnsCurrentProfile.value = state.dns.profile;
   pendingDnsProfile.value = profile;
   dnsPlanCopied.value = false;
@@ -312,7 +320,7 @@ onMounted(() => void refreshNetworkState(true));
         <span>{{ t("应用 DNS Profile") }}</span>
         <select
           class="h-10 min-w-0 rounded-md border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-ivory)] px-3 text-sm text-[var(--mn-ink)] disabled:cursor-not-allowed disabled:opacity-55"
-          :value="pendingDnsProfile || state.dns.profile"
+          :value="customDohSelected ? 'custom-doh' : pendingDnsProfile || state.dns.profile"
           :disabled="!dnsSettingsEnabled"
           @change="setDnsProfile(($event.target as HTMLSelectElement).value)"
         >
@@ -320,6 +328,7 @@ onMounted(() => void refreshNetworkState(true));
           <option value="cloudflare-doh">Cloudflare DoH</option>
           <option value="cloudflare-dot">Cloudflare DoT</option>
           <option value="cloudflare-udp">Cloudflare UDP</option>
+          <option value="custom-doh">{{ t("自定义 DoH") }}</option>
         </select>
       </label>
       <label class="grid gap-1 text-xs text-[var(--mn-ink-muted)]">
@@ -337,6 +346,7 @@ onMounted(() => void refreshNetworkState(true));
         </select>
       </label>
     </div>
+    <CustomDohSettings v-if="customDohSelected || state.dns.profile === 'custom-doh'" :enabled="dnsSettingsEnabled" @saved="refreshDnsState" @cancel="customDohSelected = false" />
     <div class="grid gap-3 rounded-md border border-[color-mix(in_srgb,var(--mn-ink)_10%,transparent)] p-3">
       <div>
         <p class="text-sm font-semibold text-[var(--mn-ink)]">{{ t("局域网 DNS") }}</p>

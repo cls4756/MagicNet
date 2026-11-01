@@ -37,6 +37,7 @@ const MACHINE_COMMANDS: &[&str] = &[
     "transparent.status",
     "dns.status",
     "dns.inspect",
+    "dns.custom.inspect",
     "network.status",
     "domain-forward.status",
     "sub.status",
@@ -98,6 +99,16 @@ fn machine_value(app: &App, command: &[&str]) -> Result<Value, MachineError> {
                 .map_err(|_| MachineError {
                     code: "machine.dns_observation_failed",
                     message: "unable to inspect DNS rule configuration",
+                })
+        }
+        [command, section, action]
+            if *command == "dns" && *section == "custom" && *action == "inspect" =>
+        {
+            crate::dns_custom::inspect(app)
+                .map(|data| envelope("dns.custom.inspect", data))
+                .map_err(|_| MachineError {
+                    code: "machine.dns_observation_failed",
+                    message: "unable to inspect custom DoH configuration",
                 })
         }
         [command, action] if *command == "network" && *action == "status" => {
@@ -171,9 +182,10 @@ fn capabilities_value() -> Value {
                 "configured_effective_split",
                 "privacy_safe_network_identifiers",
                 "readiness_signals",
-                "lan_dns_routing"
+                "lan_dns_routing",
+                "custom_doh"
             ],
-            "private_commands": ["sub.inspect", "wifi.inspect", "routing.inspect", "dns.inspect"],
+            "private_commands": ["sub.inspect", "wifi.inspect", "routing.inspect", "dns.inspect", "dns.custom.inspect"],
             "json_flag_positions": ["prefix", "suffix"],
             "read_only": true,
         }),
@@ -263,11 +275,21 @@ fn supervisor_data(app: &App) -> Value {
 fn dns_status_value(app: &App) -> Value {
     let profile = dns_profile(app);
     let bootstrap_configured = dns_bootstrap(app);
-    let via_proxy = dns_via_proxy(app, &profile);
+    let custom = crate::dns_custom::load(app);
+    let via_proxy = if profile == "custom-doh" {
+        custom
+            .as_ref()
+            .ok()
+            .and_then(|custom| custom.as_ref())
+            .map(|custom| custom.via_proxy)
+    } else {
+        Some(dns_via_proxy(app, &profile))
+    };
     let lan = dns_lan_config(app);
     let lan_configured = lan.server.is_some() && !lan.domains.is_empty();
     let lan_effective = lan_configured && lan_dns_effective(app, &lan);
     let (primary, secondary, transport) = match profile.as_str() {
+        "custom-doh" => ("custom-profile-dns", None, "doh"),
         "cloudflare-udp" | "cloudflare-udp-direct" => ("1.1.1.1", Some("1.0.0.1"), "udp"),
         "cloudflare-dot" | "cloudflare-dot-direct" => {
             ("tls://1.1.1.1", Some("tls://1.0.0.1"), "dot")
@@ -301,6 +323,7 @@ fn dns_status_value(app: &App) -> Value {
             "secondary": secondary,
             "transport": transport,
             "via_proxy": via_proxy,
+            "custom_doh": {"configured": custom.as_ref().ok().map(|custom| custom.is_some())},
             "bootstrap_configured": bootstrap_configured,
             "bootstrap_transport": bootstrap_transport(&bootstrap_configured),
             "lan": {
@@ -735,6 +758,7 @@ fn dns_profile(app: &App) -> String {
         .unwrap_or_default();
     match value.as_str() {
         "default" | "system" | "local" => "default",
+        "custom-doh" => "custom-doh",
         // Cloudflare profiles
         "cloudflare" | "cloudflare-doh" | "1.1.1.1-doh" | "doh" => "cloudflare-doh",
         "cloudflare-doh-direct" => "cloudflare-doh-direct",
@@ -891,7 +915,8 @@ mod tests {
                 "sub.inspect",
                 "wifi.inspect",
                 "routing.inspect",
-                "dns.inspect"
+                "dns.inspect",
+                "dns.custom.inspect"
             ])
         );
         let commands = value["data"]["commands"]
@@ -912,6 +937,13 @@ mod tests {
         assert!(commands
             .iter()
             .any(|command| command.as_str() == Some("routing.inspect")));
+        assert!(commands
+            .iter()
+            .any(|command| command.as_str() == Some("dns.custom.inspect")));
+        assert!(value["data"]["features"]
+            .as_array()
+            .unwrap()
+            .contains(&serde_json::json!("custom_doh")));
     }
 
     #[test]

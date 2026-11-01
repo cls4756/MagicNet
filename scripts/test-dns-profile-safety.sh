@@ -337,6 +337,57 @@ fi
 [ "$before_invalid_intent" = "$(sha256sum "$MODDIR/.config/sing-box/config.json" | awk '{print $1}')" ]
 rm "$MODDIR/.config/magicnet/dns-rules.json"
 
+printf '%s\n' '{"schema":1,"rules":[{"domain_suffix":["cn"],"server":"bootstrap-local-dns"},{"domain_suffix":["example"],"server":"__magicnet_dns_profile__"}]}' >"$MODDIR/.config/magicnet/dns-rules.json"
+for via_proxy in true false; do
+  jq -n --argjson via_proxy "$via_proxy" '{schema:1,server:"resolver.example",server_port:8443,path:"/private/dns?key=fixture",via_proxy:$via_proxy}' >"$MODDIR/.config/magicnet/dns-custom.json"
+  MAGICNET_DNS_PROFILE=custom-doh magicnet_dns_apply_singbox
+  jq -e --argjson via_proxy "$via_proxy" '
+    .dns.final == "custom-profile-dns"
+    and ([.dns.servers[] | select(.tag == "custom-profile-dns")][0]
+      | .server == "resolver.example" and .server_port == 8443 and .path == "/private/dns?key=fixture"
+        and .tls.server_name == "resolver.example" and (.tls.insecure // false) == false
+        and .domain_resolver.server == "bootstrap-local-dns"
+        and (if $via_proxy then .detour == "proxy" and (has("routing_mark") | not)
+          else .routing_mark == 1073741824 and (has("detour") | not) end))
+    and any(.dns.servers[]; .tag == "retained-udp")
+    and any(.dns.rules[]; .server == "custom-profile-dns")
+    and any(.dns.rules[]; .server == "bootstrap-local-dns")
+  ' "$MODDIR/.config/sing-box/config.json" >/dev/null
+done
+for profile in cloudflare-doh default custom-doh; do
+  MAGICNET_DNS_PROFILE="$profile" magicnet_dns_apply_singbox
+  jq -e --arg profile "$profile" '
+    if $profile == "custom-doh" then .dns.final == "custom-profile-dns"
+    else all(.dns.servers[]; .tag != "custom-profile-dns") end
+  ' "$MODDIR/.config/sing-box/config.json" >/dev/null
+done
+for server in '2001:db8::1' '::ffff:192.0.2.1'; do
+  jq --arg server "$server" '.server=$server | .server_port=443' "$MODDIR/.config/magicnet/dns-custom.json" >"$WORK/ipv6.json"
+  mv "$WORK/ipv6.json" "$MODDIR/.config/magicnet/dns-custom.json"
+  MAGICNET_DNS_PROFILE=custom-doh magicnet_dns_apply_singbox
+  jq -e --arg server "$server" 'any(.dns.servers[]; .tag == "custom-profile-dns" and .server == $server and .headers.Host == ("[" + $server + "]"))' "$MODDIR/.config/sing-box/config.json" >/dev/null
+done
+before_invalid_custom="$(sha256sum "$MODDIR/.config/sing-box/config.json" | awk '{print $1}')"
+for malformed in 'invalid' '{"schema":2}' '{"schema":1,"server":"dns.example","server_port":0,"path":"/dns-query","via_proxy":true}' '{"schema":1,"server":"dns.example","server_port":443,"path":"/dns-query%0d%0a","via_proxy":true}'; do
+  printf '%s\n' "$malformed" >"$MODDIR/.config/magicnet/dns-custom.json"
+  if MAGICNET_DNS_PROFILE=custom-doh magicnet_dns_apply_singbox >/dev/null 2>&1; then
+    printf 'invalid custom DoH must be rejected\n' >&2
+    exit 1
+  fi
+  [ "$before_invalid_custom" = "$(sha256sum "$MODDIR/.config/sing-box/config.json" | awk '{print $1}')" ]
+done
+rm "$MODDIR/.config/magicnet/dns-custom.json"
+if MAGICNET_DNS_PROFILE=custom-doh magicnet_dns_apply_singbox >/dev/null 2>&1; then
+  printf 'missing custom DoH must be rejected\n' >&2
+  exit 1
+fi
+ln -s "$MODDIR/.config/sing-box/config.json" "$MODDIR/.config/magicnet/dns-custom.json"
+if MAGICNET_DNS_PROFILE=custom-doh magicnet_dns_apply_singbox >/dev/null 2>&1; then
+  printf 'symlink custom DoH must be rejected\n' >&2
+  exit 1
+fi
+rm "$MODDIR/.config/magicnet/dns-custom.json"
+
 if [ "$with_routing_assets" -eq 1 ]; then
   command -v sing-box >/dev/null 2>&1 || {
     printf 'prepared DNS checks require sing-box and rule-set assets\n' >&2

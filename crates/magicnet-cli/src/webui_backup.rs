@@ -93,7 +93,18 @@ fn backup_text(app: &App) -> Result<String, String> {
         if length > MAX_BACKUP_BYTES as u64 {
             return Err(format!("backup source exceeds size limit: {rel}"));
         }
-        let text = fs::read_to_string(path).unwrap_or_default();
+        let text = if *rel == crate::dns_custom::CUSTOM_PATH {
+            let Some(custom) = crate::dns_custom::load(app)? else {
+                continue;
+            };
+            format!(
+                "{}\n",
+                serde_json::to_string_pretty(&custom.value())
+                    .map_err(|_| "unable to encode custom DoH backup configuration")?
+            )
+        } else {
+            fs::read_to_string(path).unwrap_or_default()
+        };
         let additional = rel.len() + text.len() + 6;
         if out.len().saturating_add(additional) > MAX_BACKUP_BYTES {
             return Err("backup exceeds size limit".to_string());
@@ -290,6 +301,10 @@ fn collect_restore_section(sections: &mut Vec<(String, String)>, rel: Option<Str
 }
 
 fn validate_restore_section(rel: &str, text: &str) -> Result<(), String> {
+    if rel == crate::dns_custom::CUSTOM_PATH {
+        crate::dns_custom::validate_intent(text)
+            .map_err(|_| "invalid custom DoH backup configuration")?;
+    }
     // `.conf` files are `.`-sourced by the shell library. A shell-inert value
     // alone is not enough: unknown keys such as PATH can still change the
     // runtime environment. Each restored file therefore has its own fixed
@@ -366,6 +381,7 @@ fn sourced_conf_value_is_allowed(rel: &str, key: &str, value: &str) -> bool {
         (".config/magicnet/dns.conf", "MAGICNET_DNS_PROFILE") => matches!(
             value,
             "default"
+                | "custom-doh"
                 | "system"
                 | "local"
                 // Cloudflare profiles
@@ -470,6 +486,7 @@ fn backup_files() -> &'static [&'static str] {
         ".config/magicnet/route-block-domain-suffix.list",
         ".config/magicnet/route-warp-domain-suffix.list",
         ".config/magicnet/dns.conf",
+        ".config/magicnet/dns-custom.json",
         ".config/magicnet/warp.conf",
         ".config/magicnet/warp-endpoint.json",
         ".config/magicnet/singbox-config-repo.conf",
@@ -514,6 +531,7 @@ mod tests {
         fs::create_dir_all(app_mode.parent().expect("app mode parent")).unwrap();
         fs::write(&app_mode, "MAGICNET_APP_MODE=whitelist\n").unwrap();
         let text = backup_text(&app).unwrap();
+        assert!(!text.contains(crate::dns_custom::CUSTOM_PATH));
 
         assert!(text.starts_with("MagicNet backup v2\n"));
         assert!(!text.contains("password_md5="));
@@ -689,6 +707,8 @@ mod tests {
             "\n",
             "--- .config/magicnet/warp-endpoint.json\n",
             "{\"private_key\":\"fixture\"}\n",
+            "\n--- .config/magicnet/dns-custom.json\n",
+            "{\"schema\":1,\"server\":\"dns.example\",\"server_port\":443,\"path\":\"/private/dns?key=fixture\",\"via_proxy\":true}\n",
         );
 
         restore_backup(&app, text).expect("restore secret-bearing files");
@@ -696,6 +716,7 @@ mod tests {
         for rel in [
             ".config/sing-box/subscription.url",
             ".config/magicnet/warp-endpoint.json",
+            ".config/magicnet/dns-custom.json",
         ] {
             let mode = fs::metadata(app.moddir.join(rel))
                 .expect("stat restored secret")
@@ -704,6 +725,38 @@ mod tests {
                 & 0o777;
             assert_eq!(mode, 0o600, "unexpected mode for {rel}");
         }
+    }
+
+    #[test]
+    fn backup_custom_doh_validates_profile_and_endpoint_schema() {
+        assert!(backup_files().contains(&crate::dns_custom::CUSTOM_PATH));
+        assert!(sourced_conf_content_matches_schema(
+            ".config/magicnet/dns.conf",
+            "MAGICNET_DNS_PROFILE=custom-doh\n"
+        ));
+        for text in [
+            "invalid",
+            r#"{"schema":2,"server":"dns.example","server_port":443,"path":"/dns-query","via_proxy":true}"#,
+            r#"{"schema":1,"server":"dns.example","server_port":0,"path":"/dns-query","via_proxy":true}"#,
+        ] {
+            assert!(validate_restore_section(crate::dns_custom::CUSTOM_PATH, text).is_err());
+        }
+    }
+
+    #[test]
+    fn backup_round_trips_custom_doh_without_creating_empty_optional_intent() {
+        let app = temp_app();
+        let path = app.moddir.join(crate::dns_custom::CUSTOM_PATH);
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let intent = r#"{"schema":1,"server":"dns.example","server_port":8443,"path":"/private/dns?key=fixture","via_proxy":false}"#;
+        fs::write(&path, intent).unwrap();
+        let text = backup_text(&app).unwrap();
+        let restored = temp_app();
+        restore_backup(&restored, &text).unwrap();
+        assert_eq!(
+            crate::dns_custom::load(&restored).unwrap().unwrap().value(),
+            serde_json::from_str::<serde_json::Value>(intent).unwrap()
+        );
     }
 
     #[test]

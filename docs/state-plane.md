@@ -64,6 +64,15 @@ A persistent user choice must not be hidden in `.state`. Selector choices theref
 
 ## Transactional publication
 
+Custom DoH intent lives in private `.config/magicnet/dns-custom.json`:
+`schema=1`, `server`, `server_port`, `path`, and `via_proxy`. The selected
+`custom-doh` profile remains in `.config/magicnet/dns.conf`. The components are
+the only stored endpoint representation. Both intent files are published using
+the existing recoverable multi-file transaction, after native validation and
+revision checks under the lifecycle/configuration locks. Application failure
+restores previous intent and configuration. No endpoint or profile preference
+is added to canonical runtime state.
+
 DNS rule edits persist user intent in `.config/magicnet/dns-rules.json`, an
 atomically replaced `{ "schema": 1, "rules": [...] }` document. This is private
 configuration, not canonical runtime state. The application-resolver target is

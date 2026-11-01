@@ -37,6 +37,8 @@ test("the DNS detail owns all DNS controls while proxy retains only its responsi
   assert.match(dns, /<SettingsDnsPage\s*\/>/);
   assert.match(content, /<DnsToolsCard\s*\/>/);
   assert.match(content, /<DnsRulesPanel\s*\/>/);
+  assert.match(card, /<CustomDohSettings/);
+  assert.match(card, /<option value="custom-doh">/);
   for (const label of ["DNS 劫持", "应用 DNS Profile", "Bootstrap DNS", "局域网 DNS"]) {
     assert.ok(card.includes(label), label);
   }

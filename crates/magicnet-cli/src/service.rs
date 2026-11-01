@@ -268,6 +268,14 @@ pub(crate) fn with_config_apply_lock(
 }
 
 pub(crate) fn run_dns_rules_save(app: &App, payload_path: &Path) -> Result<(), String> {
+    run_dns_save(app, payload_path, "rules")
+}
+
+pub(crate) fn run_dns_custom_save(app: &App, payload_path: &Path) -> Result<(), String> {
+    run_dns_save(app, payload_path, "custom")
+}
+
+fn run_dns_save(app: &App, payload_path: &Path, kind: &str) -> Result<(), String> {
     let _config_apply_guard = config_apply_lock(app)?;
     if transparent_transaction_active(app) {
         return Err(
@@ -278,9 +286,9 @@ pub(crate) fn run_dns_rules_save(app: &App, payload_path: &Path) -> Result<(), S
     let executable = std::env::current_exe().map_err(|_| "unable to locate the CLI executable")?;
     let quote = |path: &Path| format!("'{}'", path.to_string_lossy().replace('\'', "'\\''"));
     run_magicnet_function(app, &format!(
-        ". \"$MODDIR/lib/magicnet_singbox_subscribe.sh\"; magicnet_dns_rules_commit() {{ if magicnet_singbox_update_lock_active || [ -d \"$MODDIR/.state/sing-box/subscription-transaction\" ]; then echo '[error] subscription transaction requires completion or recovery' >&2; return 1; fi; MAGICNET_DNS_RULES_LOCKED=1 MAGICNET_CONFIG_LOCK_HELD=1 {} dns rules save-file {}; }}; magicnet_with_config_lock magicnet_dns_rules_commit",
+        ". \"$MODDIR/lib/magicnet_singbox_subscribe.sh\"; magicnet_dns_rules_commit() {{ if magicnet_singbox_update_lock_active || [ -d \"$MODDIR/.state/sing-box/subscription-transaction\" ]; then echo '[error] subscription transaction requires completion or recovery' >&2; return 1; fi; MAGICNET_DNS_RULES_LOCKED=1 MAGICNET_CONFIG_LOCK_HELD=1 {} dns {kind} save-file {}; }}; magicnet_with_config_lock magicnet_dns_rules_commit",
         quote(&executable), quote(payload_path)
-    )).map_err(|_| "DNS rule validation or application failed; reload rules and check health".to_string())
+    )).map_err(|_| "DNS validation or application failed; reload configuration and check health".to_string())
 }
 
 pub(crate) fn apply_config_transaction_locked(
