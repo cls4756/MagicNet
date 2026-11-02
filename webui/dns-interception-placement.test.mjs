@@ -19,7 +19,12 @@ test("application default label follows Bootstrap without changing the stored va
 test("DNS profile and bootstrap selectors require interception", () => {
   assert.match(dnsCard, /dnsInterception\.value === "on"/);
   assert.match(dnsCard, /!pendingDnsAction\.value\?\.key\.startsWith\("dns-interception-"\)/);
-  assert.equal((dnsCard.match(/:disabled="!dnsSettingsEnabled"/g) ?? []).length, 2);
+  const selectors = [...dnsCard.matchAll(/<select\b[\s\S]*?<\/select>/g)];
+  for (const handler of ["setDnsProfile", "setBootstrapDns"]) {
+    const selector = selectors.find(([source]) => source.includes(`@change="${handler}`));
+    assert.ok(selector, handler);
+    assert.match(selector[0], /:disabled="!dnsSettingsEnabled(?: \|\| customDohBusy)?"/);
+  }
 });
 
 test("network policy updates preserve DNS interception", () => {

@@ -1,6 +1,7 @@
 export default {
   "通过代理": ["Via proxy", "Через прокси"],
   "自定义 DoH": ["Custom DoH", "Свой DoH"],
+  "编辑自定义 DoH": ["Edit custom DoH", "Изменить свой DoH"],
   "DoH 地址": ["DoH URL", "Адрес DoH"],
   "DoH 连接方式": ["DoH connection", "Подключение DoH"],
   "检查自定义 DoH 支持": ["Check custom DoH support", "Проверить поддержку своего DoH"],

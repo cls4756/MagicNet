@@ -26,6 +26,7 @@ const pendingDnsAction = ref<PendingToolAction | null>(null);
 const pendingDnsCurrentProfile = ref("");
 const pendingDnsProfile = ref("");
 const customDohSelected = ref(false);
+const customDohBusy = ref(false);
 const dnsInterception = ref<"on" | "off">("on");
 const effectiveDnsInterception = ref("unavailable");
 const networkPolicyLoaded = ref(false);
@@ -118,6 +119,11 @@ async function refreshDnsState(): Promise<void> {
   await Promise.all([refreshDnsStatus(), refreshNetworkState(true)]);
 }
 
+async function onCustomDohSaved(cleanupConfirmed: boolean): Promise<void> {
+  customDohSelected.value = !cleanupConfirmed;
+  await refreshDnsState();
+}
+
 function setDnsInterception(interception: string): void {
   if (interception !== "on" && interception !== "off") return;
   dnsInterception.value = interception;
@@ -135,6 +141,7 @@ function setDnsInterception(interception: string): void {
 }
 
 function setDnsProfile(profile: string): void {
+  if (!dnsSettingsEnabled.value || customDohBusy.value) return;
   customDohSelected.value = profile === "custom-doh";
   if (customDohSelected.value) {
     pendingDnsAction.value = null;
@@ -321,7 +328,7 @@ onMounted(() => void refreshNetworkState(true));
         <select
           class="h-10 min-w-0 rounded-md border border-[color-mix(in_srgb,var(--mn-ink)_12%,transparent)] bg-[var(--mn-ivory)] px-3 text-sm text-[var(--mn-ink)] disabled:cursor-not-allowed disabled:opacity-55"
           :value="customDohSelected ? 'custom-doh' : pendingDnsProfile || state.dns.profile"
-          :disabled="!dnsSettingsEnabled"
+          :disabled="!dnsSettingsEnabled || customDohBusy"
           @change="setDnsProfile(($event.target as HTMLSelectElement).value)"
         >
           <option value="default">{{ t("跟随 Bootstrap DNS") }}</option>
@@ -346,7 +353,10 @@ onMounted(() => void refreshNetworkState(true));
         </select>
       </label>
     </div>
-    <CustomDohSettings v-if="customDohSelected || state.dns.profile === 'custom-doh'" :enabled="dnsSettingsEnabled" @saved="refreshDnsState" @cancel="customDohSelected = false" />
+    <div v-if="state.dns.profile === 'custom-doh' && !customDohSelected && !pendingDnsAction" class="flex">
+      <Button size="sm" variant="outline" :disabled="!dnsSettingsEnabled || customDohBusy" @click="setDnsProfile('custom-doh')">{{ t("编辑自定义 DoH") }}</Button>
+    </div>
+    <CustomDohSettings v-if="customDohSelected" :enabled="dnsSettingsEnabled" @busy="customDohBusy = $event" @saved="onCustomDohSaved" @cancel="customDohSelected = false" />
     <div class="grid gap-3 rounded-md border border-[color-mix(in_srgb,var(--mn-ink)_10%,transparent)] p-3">
       <div>
         <p class="text-sm font-semibold text-[var(--mn-ink)]">{{ t("局域网 DNS") }}</p>

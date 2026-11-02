@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { runInNewContext } from "node:vm";
 import test from "node:test";
+import ts from "typescript";
 import { buildCustomDohPayload, parseCustomDohSnapshot, supportsCustomDoh, validateCustomDohUrl } from "./src/components/pages/customDohPlan.ts";
 import { buildDnsProfilePlan, formatDnsProfilePlanReport } from "./src/components/pages/dnsProfilePlan.ts";
 import { parseMachineDns } from "./src/composables/machineStatus.ts";
@@ -49,4 +51,32 @@ test("the custom DoH form keeps endpoint drafts private and synchronizes transla
   assert.doesNotMatch(source, /state\.output|state\.notice|localStorage|sessionStorage|copyText/);
   assert.match(source, /if \(disposed \|\| !props.enabled\) return/);
   for (const match of source.matchAll(/\bt\(["']([^"']+)["']\)/g)) assert.ok(messages[match[1]]?.every(Boolean), match[1]);
+});
+
+test("custom DoH save finishes private cleanup before notifying the parent to refresh", async () => {
+  const source = readFileSync(new URL("./src/components/pages/CustomDohSettings.vue", import.meta.url), "utf8");
+  const script = ts.createSourceFile("CustomDohSettings.ts", source.match(/<script setup lang="ts">([\s\S]*?)<\/script>/)[1], ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+  const handler = script.statements.find((node) => ts.isFunctionDeclaration(node) && node.name?.text === "save");
+  const compiled = ts.transpileModule(handler.getText(script), { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText;
+  const events = [];
+  const scope = {
+    props: { enabled: true }, pendingPayload: { value: "private-fixture" }, busy: { value: false }, disposed: false,
+    error: { value: "" }, status: { value: "" },
+    withAction: async (_key, task) => { await task(); events.push("unlocked"); },
+    stagePrivatePayload: async () => { events.push("stage"); return { path: "/private/payload", basename: "payload.json" }; },
+    runPrivateCli: async () => { events.push("apply"); return { ok: true }; },
+    removePrivatePayload: async () => { events.push("cleanup"); return true; },
+    shellQuote: (value) => value, t: (value) => value,
+    emit: (event) => events.push(event), load: async () => events.push("reload-editor"),
+  };
+  await runInNewContext(`${compiled}\nsave()`, scope);
+  assert.deepEqual(events, ["stage", "apply", "cleanup", "unlocked", "saved"]);
+});
+
+test("the active custom profile does not force its editor open and has a translated edit action", () => {
+  const source = readFileSync(new URL("./src/components/pages/DnsToolsCard.vue", import.meta.url), "utf8");
+  assert.match(source, /<CustomDohSettings v-if="customDohSelected"/);
+  assert.match(source, /@saved="onCustomDohSaved"/);
+  assert.match(source, /:disabled="!dnsSettingsEnabled \|\| customDohBusy"/);
+  assert.deepEqual(messages["编辑自定义 DoH"], ["Edit custom DoH", "Изменить свой DoH"]);
 });

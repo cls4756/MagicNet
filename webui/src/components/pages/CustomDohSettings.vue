@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { t } from "@/i18n";
 import Button from "@/components/ui/Button.vue";
 import Input from "@/components/ui/Input.vue";
@@ -9,7 +9,7 @@ import { useMagicNet } from "@/composables/useMagicNet";
 import { buildCustomDohPayload, parseCustomDohSnapshot, supportsCustomDoh, type CustomDohSnapshot } from "./customDohPlan";
 
 const props = defineProps<{ enabled: boolean }>();
-const emit = defineEmits<{ saved: []; cancel: [] }>();
+const emit = defineEmits<{ saved: [cleanupConfirmed: boolean]; cancel: []; busy: [value: boolean] }>();
 const { runCli, runPrivateCli, stagePrivatePayload, removePrivatePayload, shellQuote } = useMagicNet();
 const { isRunning, withAction } = useActionLock();
 const snapshot = ref<CustomDohSnapshot | null>(null);
@@ -21,6 +21,8 @@ const status = ref("");
 const busy = computed(() => isRunning("custom-doh-load") || isRunning("custom-doh-save"));
 let disposed = false;
 let readSequence = 0;
+
+watch(busy, (value) => emit("busy", value), { immediate: true, flush: "sync" });
 
 async function load(): Promise<void> {
   if (busy.value) return;
@@ -64,6 +66,7 @@ async function save(): Promise<void> {
   if (!props.enabled || !pendingPayload.value || busy.value) return;
   const payload = pendingPayload.value;
   let saved = false;
+  let cleanupConfirmed = false;
   await withAction("custom-doh-save", async () => {
     const basename = `custom-doh-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.json`;
     const staged = await stagePrivatePayload("tmp", basename, payload, t("自定义 DoH 私有载荷"));
@@ -82,13 +85,13 @@ async function save(): Promise<void> {
       }
       status.value = t("自定义 DoH 已校验、保存并应用。");
       saved = true;
-      emit("saved");
     } finally {
       const cleaned = await removePrivatePayload("tmp", staged.basename, t("自定义 DoH 私有载荷"));
+      cleanupConfirmed = cleaned;
       if (!cleaned && !disposed) error.value = t("自定义 DoH 私有临时数据清理未确认。");
     }
   });
-  if (saved && !disposed) await load();
+  if (saved && !disposed) emit("saved", cleanupConfirmed);
 }
 
 function cancel(): void {
