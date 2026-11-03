@@ -79,7 +79,13 @@ configuration, not canonical runtime state. The application-resolver target is
 stored as `__magicnet_dns_profile__` so Profile changes (including `default`)
 do not erase the distinction from explicit `bootstrap-local-dns` rules. Runtime
 materialization resolves that alias to the selected application Profile and
-retains current Tailscale- and LAN-DNS-owned rules separately. LAN DNS rules are
+uses `default-remote-dns` for application rules under `default`. This resolver
+copies the Bootstrap upstream settings while retaining a distinct role tag;
+`dns.final` and proxy-node resolution remain `bootstrap-local-dns` under `default`.
+Template rules without saved user intent therefore also retain their application
+identity across Profile changes. Explicit Bootstrap rules are never inferred
+to be application rules, including ambiguous rules already collapsed by older versions.
+Materialization retains current Tailscale- and LAN-DNS-owned rules separately. LAN DNS rules are
 regenerated from DNS preferences and retain priority over ordinary rules. The
 complete saved ordinary
 rule list overrides subscription-template DNS rules; unavailable references fail

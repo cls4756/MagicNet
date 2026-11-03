@@ -199,6 +199,13 @@ per-rule runtime hit or effective application is inferred. `source` identifies
 Revision change detection covers the configuration, DNS preferences and optional
 saved rule intent; this is not a global OS snapshot.
 
+Under `default`, `application_server` is `default-remote-dns` when that role alias
+has been materialized; it uses the same upstream settings as Bootstrap but keeps
+application-rule identity. `final_server` remains `bootstrap-local-dns`. Older
+configurations without the alias report `bootstrap-local-dns` as the available
+application resolver until configuration application creates the alias. Explicit
+Bootstrap rule targets are not reclassified as application targets.
+
 The human command `cli dns rules save-file <webui-payload-path>` remains outside
 the machine dispatcher. It uses the existing bounded private payload transport,
 the lifecycle flock and shell configuration lock (in that order), rejects active

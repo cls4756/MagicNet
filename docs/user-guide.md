@@ -119,6 +119,13 @@ MagicNet 全局接管应用 DNS，但把两个职责分开配置：
 - DNS Profile 控制应用查询最终使用的解析器；订阅模板中的 `doh-cloudflare`、`doh-google` 等策略标签会改写到当前 profile。
 - Bootstrap DNS 负责默认本地解析以及代理节点域名解析，避免代理解析依赖代理本身形成循环。
 
+「跟随 Bootstrap DNS」仍使用当前 Bootstrap 上游，但应用规则通过独立的
+`default-remote-dns` 标签保留用途，界面仍显示为「应用 DNS Profile」。因此在
+Cloudflare、自定义 DoH 和 default 之间切换不会把应用规则永久变成 Bootstrap 规则。
+显式 Bootstrap、节点解析和局域网 DNS 规则不会随应用 Profile 改换用途。
+旧版本已经把应用规则改写为 Bootstrap 且没有保留规则意图时，无法可靠区分它们
+与原本的 Bootstrap 规则；升级不会猜测改写，需要从可信原始模板恢复或确认后调整目标。
+
 ### 自定义 DoH
 
 在 WebUI「设置 → DNS 设置」的应用 DNS 下拉框选择「自定义 DoH」，填写

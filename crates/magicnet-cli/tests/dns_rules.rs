@@ -188,11 +188,108 @@ fi
     fn config(&self) -> Vec<u8> {
         fs::read(self.root.join(".config/sing-box/config.json")).unwrap()
     }
+
+    fn set_default_profile(&self, application_alias: bool) {
+        let mut config: Value = serde_json::from_slice(&self.config()).unwrap();
+        let target = if application_alias {
+            "default-remote-dns"
+        } else {
+            "bootstrap-local-dns"
+        };
+        if application_alias {
+            config["dns"]["servers"][1] = config["dns"]["servers"][0].clone();
+            config["dns"]["servers"][1]["tag"] = json!(target);
+        } else {
+            config["dns"]["servers"].as_array_mut().unwrap().truncate(1);
+        }
+        config["dns"]["rules"][0]["server"] = json!(target);
+        config["dns"]["final"] = json!("bootstrap-local-dns");
+        fs::write(
+            self.root.join(".config/magicnet/dns.conf"),
+            "MAGICNET_DNS_PROFILE=default\n",
+        )
+        .unwrap();
+        for path in ["original.json", ".config/sing-box/config.json"] {
+            fs::write(self.root.join(path), config.to_string()).unwrap();
+        }
+        config["dns"]["rules"][1] = json!({"domain_suffix":["edited.invalid"],"server":target});
+        fs::write(self.root.join("expected.json"), config.to_string()).unwrap();
+    }
 }
 
 impl Drop for Fixture {
     fn drop(&mut self) {
         let _ = fs::remove_dir_all(&self.root);
+    }
+}
+
+#[test]
+fn default_inspection_distinguishes_application_alias_from_explicit_bootstrap_and_supports_legacy()
+{
+    for application_alias in [true, false] {
+        let fixture = Fixture::new();
+        fixture.set_default_profile(application_alias);
+        let output = fixture.run(&["--json", "dns", "inspect"]);
+        assert!(output.status.success());
+        let snapshot: Value = serde_json::from_slice(&output.stdout).unwrap();
+        assert_eq!(snapshot["data"]["final_server"], "bootstrap-local-dns");
+        assert_eq!(snapshot["data"]["resolvers"][0]["available"], true);
+        assert_eq!(
+            snapshot["data"]["rules"][1]["target"],
+            "bootstrap-local-dns"
+        );
+        assert_eq!(
+            snapshot["data"]["application_server"],
+            if application_alias {
+                "default-remote-dns"
+            } else {
+                "bootstrap-local-dns"
+            }
+        );
+        assert_eq!(
+            snapshot["data"]["rules"][0]["target"],
+            if application_alias {
+                "__magicnet_dns_profile__"
+            } else {
+                "bootstrap-local-dns"
+            }
+        );
+    }
+}
+
+#[test]
+fn default_rule_edits_keep_application_role_and_restore_prior_configuration_on_failure() {
+    for failure in ["none", "validation", "apply"] {
+        let fixture = Fixture::new();
+        fixture.set_default_profile(true);
+        let original = fixture.config();
+        let path = fixture.stage();
+        if failure != "none" {
+            fs::write(fixture.root.join(format!("fail-{failure}")), "1").unwrap();
+        }
+        let output = fixture.save(&path);
+        if failure == "none" {
+            assert!(output.status.success());
+            let candidate: Value =
+                serde_json::from_slice(&fs::read(fixture.root.join("validated.json")).unwrap())
+                    .unwrap();
+            assert_eq!(candidate["dns"]["rules"][0]["server"], "default-remote-dns");
+            assert_eq!(candidate["dns"]["rules"][1]["server"], "default-remote-dns");
+            assert_eq!(candidate["dns"]["final"], "bootstrap-local-dns");
+            let intent: Value = serde_json::from_slice(
+                &fs::read(fixture.root.join(".config/magicnet/dns-rules.json")).unwrap(),
+            )
+            .unwrap();
+            assert_eq!(intent["rules"][1]["server"], "__magicnet_dns_profile__");
+        } else {
+            assert!(!output.status.success(), "{failure}");
+            assert_eq!(fixture.config(), original, "{failure}");
+            assert!(!fixture
+                .root
+                .join(".config/magicnet/dns-rules.json")
+                .exists());
+        }
+        assert!(!fixture.root.join(".state/config.lock").exists());
     }
 }
 

@@ -54,6 +54,82 @@ magicnet_conf_value() (
   awk -F= -v key="$2" '$1 == key { value = substr($0, index($0, "=") + 1); count++ } END { if (count == 1) print value; else exit 1 }' "$1"
 )
 
+assert_application_rule_roundtrip() (
+  mkdir -p "$MODDIR/.config/sing-box" "$MODDIR/.config/magicnet" "$MODDIR/bin"
+  ln -s "$(command -v jq)" "$MODDIR/bin/jq"
+  cat >"$MODDIR/.config/sing-box/config.json" <<'EOF'
+{"dns":{"servers":[
+  {"type":"udp","tag":"bootstrap-local-dns","server":"192.168.50.1"},
+  {"type":"https","tag":"doh-cloudflare","server":"1.1.1.1"},
+  {"type":"udp","tag":"retained-dns","server":"192.0.2.53"}
+],"rules":[
+  {"clash_mode":"Global","server":"doh-cloudflare"},
+  {"domain_suffix":["cn"],"server":"bootstrap-local-dns"},
+  {"rule_set":["foreign"],"server":"doh-cloudflare"},
+  {"domain_suffix":["retained.invalid"],"server":"retained-dns"}
+]},"route":{"default_domain_resolver":{"server":"bootstrap-local-dns"}}}
+EOF
+  cat >"$MODDIR/.config/magicnet/dns.conf" <<'EOF'
+MAGICNET_LAN_DNS_SERVER=192.168.50.1
+MAGICNET_LAN_DNS_DOMAINS=router.lan
+EOF
+  printf '%s\n' '{"schema":1,"server":"resolver.example","server_port":443,"path":"/dns-query","via_proxy":true}' \
+    >"$MODDIR/.config/magicnet/dns-custom.json"
+  for selected in cloudflare-doh default cloudflare-dot default cloudflare-udp default custom-doh default google-dot default; do
+    MAGICNET_DNS_PROFILE="$selected" MAGICNET_BOOTSTRAP_DNS=aliyun magicnet_dns_apply_singbox
+    expected="${selected%%-*}-profile-dns"
+    final="$expected"
+    if [ "$selected" = default ]; then
+      expected="default-remote-dns"
+      final="bootstrap-local-dns"
+    fi
+    jq -e --arg expected "$expected" --arg final "$final" '
+      .dns.final == $final and (.dns.rules | length) == 5
+      and .dns.rules[0].server == "magicnet-lan-dns"
+      and .dns.rules[1].server == $expected
+      and .dns.rules[2].server == "bootstrap-local-dns"
+      and .dns.rules[3].server == $expected
+      and .dns.rules[4].server == "retained-dns"
+      and .route.default_domain_resolver.server == "bootstrap-local-dns"
+      and any(.dns.servers[]; .tag == $expected)
+    ' "$MODDIR/.config/sing-box/config.json" >/dev/null || {
+      printf 'application DNS rule identity was lost during roundtrip through %s\n' "$selected" >&2
+      exit 1
+    }
+    [ ! -e "$MODDIR/.config/magicnet/dns-rules.json" ]
+  done
+  for bootstrap in aliyun baidu tencent; do
+    MAGICNET_DNS_PROFILE=default MAGICNET_BOOTSTRAP_DNS="$bootstrap" magicnet_dns_apply_singbox
+    jq -e '
+      [.dns.servers[] | select(.tag == "default-remote-dns") | del(.tag)] ==
+      [.dns.servers[] | select(.tag == "bootstrap-local-dns") | del(.tag)]
+    ' "$MODDIR/.config/sing-box/config.json" >/dev/null
+    before="$(sha256sum "$MODDIR/.config/sing-box/config.json" | awk '{print $1}')"
+    MAGICNET_DNS_PROFILE=default MAGICNET_BOOTSTRAP_DNS="$bootstrap" magicnet_dns_apply_singbox
+    [ "$before" = "$(sha256sum "$MODDIR/.config/sing-box/config.json" | awk '{print $1}')" ]
+  done
+  jq '.dns.rules |= map(if .server == "default-remote-dns" then .server = "bootstrap-local-dns" else . end)' \
+    "$MODDIR/.config/sing-box/config.json" >"$WORK/legacy-rules.json"
+  mv "$WORK/legacy-rules.json" "$MODDIR/.config/sing-box/config.json"
+  MAGICNET_DNS_PROFILE=cloudflare-doh magicnet_dns_apply_singbox
+  jq -e '
+    .dns.rules[1].server == "bootstrap-local-dns"
+    and .dns.rules[2].server == "bootstrap-local-dns"
+    and .dns.rules[3].server == "bootstrap-local-dns"
+    and .dns.final == "cloudflare-profile-dns"
+  ' "$MODDIR/.config/sing-box/config.json" >/dev/null
+  before="$(sha256sum "$MODDIR/.config/sing-box/config.json" | awk '{print $1}')"
+  mv() { return 1; }
+  if MAGICNET_DNS_PROFILE=default magicnet_dns_apply_singbox >/dev/null 2>&1; then
+    printf 'failed DNS profile publication must be reported\n' >&2
+    exit 1
+  fi
+  [ "$before" = "$(sha256sum "$MODDIR/.config/sing-box/config.json" | awk '{print $1}')" ]
+  [ ! -e "$MODDIR/.config/sing-box/config.json.magicnet-dns.new" ]
+)
+
+MODDIR="$WORK/roundtrip" assert_application_rule_roundtrip
+
 assert_profile_normalization() {
   local configured="$1"
   local expected="$2"
@@ -234,7 +310,7 @@ jq -e '
   .dns.final == "bootstrap-local-dns"
     and ([.dns.servers[] | select(.tag == "cloudflare-profile-dns" or .tag == "cloudflare-backup-dns")] | length) == 0
     and ([.dns.servers[] | select(.tag == "doh-cloudflare" or .tag == "doh-google")] | length) == 0
-    and all(.dns.rules[]?; (.server == "bootstrap-local-dns") or (.server == "retained-dns"))
+    and all(.dns.rules[]?; (.server == "default-remote-dns") or (.server == "bootstrap-local-dns") or (.server == "retained-dns"))
     and ([.dns.servers[] | select(.tag == "retained-udp") | .routing_mark] == [1073741824])
     and .dns.timeout == "8s"
     and .dns.cache_capacity == 4096
@@ -293,7 +369,7 @@ MAGICNET_LAN_DNS_DOMAINS=router.lan,nas.home.arpa
 EOF
 for profile in cloudflare-doh default google-dot default cloudflare-doh; do
   MAGICNET_DNS_PROFILE="$profile" MAGICNET_BOOTSTRAP_DNS=aliyun magicnet_dns_apply_singbox
-  expected="bootstrap-local-dns"
+  expected="default-remote-dns"
   [ "$profile" = default ] || expected="${profile%%-*}-profile-dns"
   jq -e --arg expected "$expected" '
     (.dns.rules | length) == 5

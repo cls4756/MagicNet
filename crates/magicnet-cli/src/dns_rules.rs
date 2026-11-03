@@ -13,6 +13,7 @@ const CONFIG_PATH: &str = ".config/sing-box/config.json";
 const RULES_PATH: &str = ".config/magicnet/dns-rules.json";
 pub(crate) const PROFILE_SERVER: &str = "__magicnet_dns_profile__";
 const BOOTSTRAP_SERVER: &str = "bootstrap-local-dns";
+const DEFAULT_PROFILE_SERVER: &str = "default-remote-dns";
 const LAN_SERVER: &str = "magicnet-lan-dns";
 const MAX_BYTES: u64 = 4 * 1024 * 1024;
 const MAX_RULES: usize = 256;
@@ -294,13 +295,13 @@ fn load_snapshot(app: &App) -> Result<Snapshot, String> {
     digest.update(profile_text.as_deref().unwrap_or_default().as_bytes());
     let revision = format!("{:x}", digest.finalize());
     let profile = crate::dns::dns_profile(app);
-    let application_server = if profile == "default" {
-        BOOTSTRAP_SERVER.to_string()
-    } else {
-        format!(
+    let application_server = match profile.as_str() {
+        "default" if servers.contains(DEFAULT_PROFILE_SERVER) => DEFAULT_PROFILE_SERVER.to_string(),
+        "default" => BOOTSTRAP_SERVER.to_string(),
+        _ => format!(
             "{}-profile-dns",
             profile.split('-').next().unwrap_or("cloudflare")
-        )
+        ),
     };
     let rule_sets = config
         .pointer("/route/rule_set")
@@ -559,7 +560,7 @@ fn feature_rule(rule: &Value, feature_servers: &HashSet<String>) -> bool {
 
 pub(crate) fn normalized_server(server: &str) -> String {
     if server == PROFILE_SERVER
-        || server == "default-remote-dns"
+        || server == DEFAULT_PROFILE_SERVER
         || server == "doh-cloudflare"
         || server == "doh-google"
         || server == "custom-profile-dns"

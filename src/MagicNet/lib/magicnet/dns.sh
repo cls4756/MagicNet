@@ -347,6 +347,8 @@ magicnet_dns_apply_singbox() {
         if $profile == "default" then "bootstrap-local-dns"
         elif $profile == "custom-doh" then "custom-profile-dns"
         else (provider_for($profile)).tag_prefix + "-profile-dns" end;
+      def profile_rule_tag:
+        if $profile == "default" then "default-remote-dns" else profile_dns_tag end;
       # Resolve which transport to use based on profile suffix
       def transport_for($profile):
         if ($profile | endswith("-udp")) or ($profile | endswith("-udp-direct")) then "udp"
@@ -374,7 +376,7 @@ magicnet_dns_apply_singbox() {
       | .dns.servers = (
         (.dns.servers // [])
         | map(select((.tag // "") as $tag | ((managed_tags | index($tag)) == null and $tag != lan_dns_tag)))
-        | (if $profile == "default" then [default_bootstrap]
+        | (if $profile == "default" then [default_bootstrap, (default_bootstrap | .tag = "default-remote-dns")]
            elif $profile == "custom-doh" then [default_bootstrap, make_custom_https]
            else
              (provider_for($profile) | . as $provider |
@@ -404,7 +406,7 @@ magicnet_dns_apply_singbox() {
             | [(.dns.rules // [])[] | select((.server // "") as $server | $feature_servers | index($server))] + $dns_rules_override)
           end | map(select((.server // "") != lan_dns_tag)) | map(
           if ((.server // "") as $server | rewrite_rule_tags | index($server)) != null
-          then .server = profile_dns_tag
+          then .server = profile_rule_tag
           else .
           end
         ) | if ($lan_domains | length) > 0 then
