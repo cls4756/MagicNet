@@ -13,6 +13,19 @@ pub(crate) use block::block_cmd;
 const APP_POLICY_TARGETS: [&str; 3] = ["proxy", "direct", "bypass"];
 
 pub(crate) fn route_cmd(app: &App, args: &[String]) -> Result<(), String> {
+    if crate::routing_policy::has_intent(app)
+        && args.first().map(String::as_str).unwrap_or("list") == "list"
+    {
+        return crate::routing_policy::list(app);
+    }
+    if crate::routing_policy::has_intent(app)
+        && matches!(
+            args.first().map(String::as_str),
+            Some("add-domain" | "remove-domain" | "edit-domain")
+        )
+    {
+        return crate::routing_policy::legacy_domain(app, args);
+    }
     match args.first().map(String::as_str).unwrap_or("list") {
         "list" => {
             route_list(app);

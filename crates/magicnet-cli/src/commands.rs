@@ -71,6 +71,7 @@ const COMMANDS: &[CommandSpec] = commands! {
     "wifi" => wifi_cmd, "{status|enable|disable|mode <blacklist|whitelist>|interval <3-300>|add-ssid <ssid>|remove-ssid <ssid>|add-bssid <mac>|remove-bssid <mac>|check}";
     "hotspot" => hotspot_cmd, "{status|enable|disable|reconcile}";
     "route" => route_cmd, "{list|add-domain <proxy|direct|block|warp> <domain-suffix>|remove-domain <proxy|direct|block|warp> <domain-suffix>|edit-domain <old-target> <new-target> <old-suffix> <new-suffix>|apply}";
+    "routing" => crate::routing_policy::command, "{save-file <webui-payload-path>|render <module-candidate-path>}";
     "dns" => dns_cmd, "{status|set <profile>|bootstrap {status|set <system|aliyun|baidu|tencent>}|lan {status|set <gateway> <domain,...>|clear}|rules save-file <webui-payload-path>|test [domain]|apply} - profiles: default, cloudflare-{doh|dot|udp}[-direct], google-{doh|dot}[-direct], adguard-doh[-direct], quad9-doh[-direct]";
     "domain-forward" => domain_forward_cmd, "[status|enable|disable]";
     "warp" => warp_cmd, "{status|import-file <wireguard-conf-path>|enable|disable|global|rule|apply|test}";
@@ -124,6 +125,7 @@ pub(crate) fn needs_state_reconcile(args: &[String]) -> bool {
         ("mode", "") => false,
         ("node", "list" | "current") => false,
         ("route" | "block", "list") => false,
+        ("routing", "render") => false,
         ("app", "list" | "packages" | "recommendations") => false,
         ("api", "endpoint" | "groups" | "proxies" | "conns" | "stats") => false,
         ("config-editor", "get" | "path") => false,

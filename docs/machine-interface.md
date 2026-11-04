@@ -97,9 +97,53 @@ Examples:
 routing rules and outbound graph. It preserves rule order, reports whether a
 rule is a MagicNet-managed custom-domain rule, and separates configured
 defaults from observed runtime selections. It does not return node credentials,
-subscription URLs, or raw configuration secrets. The WebUI only offers add,
-edit, and delete for MagicNet-managed domain suffix records; provider-owned and
-other feature-owned rules remain read-only in this view.
+subscription URLs, or raw configuration secrets. The optional `data.policy`
+section exposes persistent user routing intent separately from the effective
+`data.rules` and `data.outbounds`: `schema`, `revision`, `source`, `rules`,
+`groups`, `final`, `targets`, `rule_sets`, and `protected_count`. Rule entries
+contain `conditions`, `target`, and an observation-only `available` flag. This
+flag means the configured outbound reference exists, not that traffic succeeds.
+Client support requires the `routing_policy_management` capabilities feature
+and the explicit private `routing.inspect` command. Older modules must not
+fall back to legacy writes. The private MCP `magicnet_routing_inspect` tool
+uses this same read-only machine command.
+
+The WebUI supports CRUD and ordering of user/business route rules, direct
+selection of nodes or groups, CRUD of reusable selector/urltest groups, and
+configuration of the fallback outbound. DNS capture, explicit mode rules,
+LAN/hotspot boundaries, module-owned advertisement rules, per-app UID policy,
+and unsupported feature/advanced rules remain module-managed. These safeguards
+are evaluated before the editable business rules.
+
+Writes use the existing private WebUI payload transport and the ordinary
+`cli routing save-file <webui-payload-path>` command, **not** `--json`. A full
+replacement payload has `schema=1`, the inspected `revision`, ordered `rules`
+with only `conditions` and `target`, `groups`, and `final`. Selector groups use
+`tag`, `type="selector"`, `members`, and `default`; automatic groups use
+`tag`, `type="urltest"`, `members`, and an HTTPS `url`. A stale revision,
+unknown rule set/outbound, duplicate/reserved name, or reference cycle is
+rejected before publishing intent. Referenced groups cannot be deleted unless
+their references are changed in the same replacement. Rules are limited to
+256 and groups to 64. Device-side sing-box validation is authoritative.
+
+The process-level apply lock and module configuration lock serialize writes
+with lifecycle and subscription operations. Candidate validation precedes
+atomic intent publication; a failed runtime application restores the previous
+intent and configuration through the existing transaction recovery path.
+The persistent file is `.config/magicnet/routing-policy.json`, never `.state`.
+Repeated old-revision requests are conflicts, not successful replayed writes.
+This is not a new machine write API; machine writes still require a separate
+idempotency, concurrency, error-code, and rollback design.
+
+The internal `routing render <module-candidate-path>` materializer is called
+under the owning shell configuration lock before core startup, runtime apply,
+and subscription candidate validation. It preserves saved user intent while
+refreshing nodes. Missing nodes/groups remain in intent and render as blocked
+traffic, rather than being silently changed to direct or another node. Normal
+CLI writes reconcile the existing canonical state plane after completion.
+A disappeared classifier remains inspectable so users can edit or delete its
+rule, but rendering rejects missing rule-set references instead of broadening
+the match or committing an invalid subscription candidate.
 
 ## Readiness semantics
 

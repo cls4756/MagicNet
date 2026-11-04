@@ -797,6 +797,7 @@ magicnet_route_apply_singbox() {
 }
 
 magicnet_route_apply_unlocked() {
+    [ ! -e "${MODDIR}/.config/magicnet/routing-policy.json" ] || return 0
     _route_rc=0
     magicnet_route_apply_singbox || _route_rc=1
     magicnet_singbox_apply_hotspot_policy || _route_rc=1

@@ -2,12 +2,10 @@ use std::collections::{HashMap, HashSet};
 
 use serde_json::{json, Map, Value};
 
-use super::{envelope, MachineError, SINGBOX_CONFIG};
-use crate::utils::read_json_file_bounded;
+use super::{envelope, MachineError};
 use crate::webui_api::curl_get_json;
 use crate::App;
 
-const MAX_CONFIG_BYTES: u64 = 4 * 1024 * 1024;
 const MAX_RULES: usize = 256;
 const MAX_OUTBOUNDS: usize = 512;
 const MAX_MEMBERS: usize = 256;
@@ -91,13 +89,27 @@ const CONDITION_KEYS: &[&str] = &[
 ];
 
 pub(super) fn inspect(app: &App) -> Result<Value, MachineError> {
-    let config = read_json_file_bounded(&app.moddir.join(SINGBOX_CONFIG), MAX_CONFIG_BYTES)
-        .ok_or(INSPECTION_ERROR)?;
+    let (config, policy) =
+        crate::routing_policy::inspect_snapshot(app).map_err(|_| INSPECTION_ERROR)?;
     let runtime = curl_get_json(app, "/proxies").ok();
-    Ok(envelope(
-        "routing.inspect",
-        inspect_config(&config, runtime.as_ref()),
-    ))
+    let mut data = inspect_config(&config, runtime.as_ref());
+    data["policy"] = policy;
+    let user_groups: HashSet<String> = data["policy"]["groups"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|group| group["tag"].as_str().map(str::to_string))
+        .collect();
+    for outbound in data["outbounds"].as_array_mut().into_iter().flatten() {
+        if outbound["tag"]
+            .as_str()
+            .is_some_and(|tag| user_groups.contains(tag))
+        {
+            outbound["internal"] = json!(false);
+            outbound["source"] = json!("user_intent");
+        }
+    }
+    Ok(envelope("routing.inspect", data))
 }
 
 fn inspect_config(config: &Value, runtime: Option<&Value>) -> Value {

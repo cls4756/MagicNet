@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { t } from "@/i18n";
+import { ref } from "vue";
 import PageHeader from "@/components/ui/PageHeader.vue";
 import ProxyGroupsPanel from "./ProxyGroupsPanel.vue";
 import RoutingRulesPanel from "./RoutingRulesPanel.vue";
+const groupsPanel = ref<{ refreshGroups: () => Promise<void> } | null>(null);
 </script>
 
 <template>
@@ -10,10 +12,10 @@ import RoutingRulesPanel from "./RoutingRulesPanel.vue";
     <PageHeader
       :overline="t('运行策略')"
       :title="t('节点与路由')"
-      :description="t('在这里选择策略组出站，并查看当前生效的路由规则。')"
+      :description="t('直接选择节点或策略组，管理可复用的用户策略与路由规则。')"
     />
-    <ProxyGroupsPanel />
-    <RoutingRulesPanel />
+    <ProxyGroupsPanel ref="groupsPanel" />
+    <RoutingRulesPanel @applied="groupsPanel?.refreshGroups()" />
   </div>
 </template>
 

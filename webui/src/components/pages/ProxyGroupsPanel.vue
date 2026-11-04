@@ -197,6 +197,7 @@ async function copyReport(): Promise<void> {
 }
 
 const { target: visibilityTarget } = useVisibilityTask(refreshGroups);
+defineExpose({ refreshGroups });
 
 watch(() => state.subscriptions.lastSuccessEpoch, (value, previous) => {
   if (value > 0 && value !== previous && rawOutput.value) void refreshGroups();

@@ -224,6 +224,19 @@ magicnet_singbox_runtime_fingerprint_matches() {
     return "$1"
 }
 
+magicnet_routing_policy_apply_config() (
+    _routing_config="${1:-$(magicnet_singbox_config_file)}"
+    _routing_cli="${MODDIR}/bin/magicnet-cli"
+    if [ ! -x "$_routing_cli" ]; then
+        if [ -e "${MODDIR}/.config/magicnet/routing-policy.json" ] ||
+            [ -L "${MODDIR}/.config/magicnet/routing-policy.json" ]; then
+            return 1
+        fi
+        return 0
+    fi
+    "$_routing_cli" routing render "$_routing_config"
+)
+
 magicnet_apply_runtime_config_unlocked() {
     if magicnet_module_disabled; then
         magicnet_supervisors_stop >/dev/null 2>&1 || true
@@ -242,6 +255,7 @@ magicnet_apply_runtime_config_unlocked() {
     magicnet_route_apply_unlocked || _runtime_rc=1
     magicnet_block_apply_unlocked || _runtime_rc=1
     magicnet_tailscale_apply_unlocked || _runtime_rc=1
+    magicnet_routing_policy_apply_config || _runtime_rc=1
     # Runtime policy writers rebuild selector objects. Normalize route-level
     # sing-box fields afterwards so a no-op apply remains byte-equivalent to
     # the configuration used by the running core.

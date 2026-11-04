@@ -78,6 +78,7 @@ magicnet_prepare_singbox_candidate_unlocked() {
     magicnet_tailscale_apply_unlocked || return 1
     magicnet_app_policy_apply_unlocked || return 1
     magicnet_warp_apply_unlocked || return 1
+    magicnet_routing_policy_apply_config || return 1
     magicnet_singbox_apply_zashboard ||
         magicnet_warn "Failed to materialize the sing-box Zashboard panel; the core will continue without the panel rewrite."
     magicnet_validate_singbox_transparent_config
@@ -115,6 +116,7 @@ magicnet_start_singbox_unlocked() {
         # Materialize per-app UID boundaries before sing-box snapshots it.
         magicnet_app_policy_apply_unlocked || return 1
         magicnet_warp_apply_unlocked || return 1
+        magicnet_routing_policy_apply_config || return 1
         magicnet_singbox_apply_zashboard ||
             magicnet_warn "Failed to materialize the sing-box Zashboard panel; the core will continue without the panel rewrite."
         magicnet_tailscale_inject_auth_key || return 1

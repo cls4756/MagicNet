@@ -51,7 +51,7 @@ const { target: visibilityTarget } = useVisibilityTask(refresh);
           <RefreshCw :size="15" />{{ t("刷新") }}
         </Button>
       </CardHeading>
-      <p class="text-sm leading-5 text-[var(--mn-ink-muted)]">{{ t("这里列出 MagicNet 生成的内部 outbound、实际选择、候选成员及路由或组引用。目前仅支持查看；新增、删除和编辑出站定义尚未开放。") }}</p>
+      <p class="text-sm leading-5 text-[var(--mn-ink-muted)]">{{ t("这里只读展示模块维护的系统出站及引用；用户策略组可在代理页面的路由管理中增删改查。") }}</p>
       <p v-if="snapshot?.runtimeState === 'unknown'" class="text-xs text-[var(--mn-warning)]">{{ t("运行选择未知；当前选择列不以配置默认值代替运行状态。") }}</p>
       <p v-if="error" class="text-sm text-[var(--mn-danger)]">{{ error }}</p>
       <div class="overflow-x-auto">

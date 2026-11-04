@@ -53,6 +53,7 @@ fn call_tool(tool: &str, args: &Value, server: &Server) -> String {
     match tool {
         "magicnet_status" => run_cli(server, &["--json", "service", "status"]),
         "magicnet_dns_inspect" => run_cli(server, &["--json", "dns", "inspect"]),
+        "magicnet_routing_inspect" => run_cli(server, &["--json", "routing", "inspect"]),
         "magicnet_cli" => cli_args(server, args),
         "magicnet_service_control" => service_control(server, args),
         "magicnet_core_select" => run_cli_owned(
@@ -480,6 +481,15 @@ mod tests {
         assert_eq!(
             response["result"]["content"][0]["text"],
             "--json dns inspect\n\nrc=0"
+        );
+    }
+
+    #[test]
+    fn routing_inspection_tool_requests_explicit_private_machine_output() {
+        let response = call_echo_tool("magicnet_routing_inspect", json!({}));
+        assert_eq!(
+            response["result"]["content"][0]["text"],
+            "--json routing inspect\n\nrc=0"
         );
     }
 

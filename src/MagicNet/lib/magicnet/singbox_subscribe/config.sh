@@ -541,6 +541,14 @@ magicnet_singbox_update_config_with_nodes() (
         return 1
     }
 
+    if command -v magicnet_routing_policy_apply_config >/dev/null 2>&1; then
+        magicnet_routing_policy_apply_config "$_tmp_file" || return 1
+    elif [ -x "${MODDIR}/bin/magicnet-cli" ]; then
+        "${MODDIR}/bin/magicnet-cli" routing render "$_tmp_file" || return 1
+    elif [ -e "${MODDIR}/.config/magicnet/routing-policy.json" ]; then
+        return 1
+    fi
+
     magicnet_json_object_valid "$_tmp_file" "$_update_jq" || {
         error "Generated sing-box config is not one JSON object"
         return 1

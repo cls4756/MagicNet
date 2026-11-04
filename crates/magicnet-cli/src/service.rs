@@ -275,6 +275,34 @@ pub(crate) fn run_dns_custom_save(app: &App, payload_path: &Path) -> Result<(), 
     run_dns_save(app, payload_path, "custom")
 }
 
+pub(crate) fn run_routing_policy_save(app: &App, payload_path: &Path) -> Result<(), String> {
+    run_routing_policy_command(
+        app,
+        &[
+            "save-file".into(),
+            payload_path.to_string_lossy().into_owned(),
+        ],
+    )
+}
+
+pub(crate) fn run_routing_policy_command(app: &App, args: &[String]) -> Result<(), String> {
+    let _config_apply_guard = config_apply_lock(app)?;
+    if transparent_transaction_active(app) {
+        return Err("transparent transaction requires recovery before editing routes".into());
+    }
+    let executable = std::env::current_exe().map_err(|_| "unable to locate the CLI executable")?;
+    let quote = |path: &Path| format!("'{}'", path.to_string_lossy().replace('\'', "'\\''"));
+    let arguments = args
+        .iter()
+        .map(|argument| format!("'{}'", argument.replace('\'', "'\\''")))
+        .collect::<Vec<_>>()
+        .join(" ");
+    run_magicnet_function(app, &format!(
+        ". \"$MODDIR/lib/magicnet_singbox_subscribe.sh\"; magicnet_routing_commit() {{ if magicnet_singbox_update_lock_active || [ -d \"$MODDIR/.state/sing-box/subscription-transaction\" ]; then return 1; fi; MAGICNET_DNS_RULES_LOCKED=1 MAGICNET_CONFIG_LOCK_HELD=1 {} routing {}; }}; magicnet_with_config_lock magicnet_routing_commit",
+        quote(&executable), arguments
+    )).map_err(|_| "routing validation or application failed; reload configuration and check health".into())
+}
+
 fn run_dns_save(app: &App, payload_path: &Path, kind: &str) -> Result<(), String> {
     let _config_apply_guard = config_apply_lock(app)?;
     if transparent_transaction_active(app) {
@@ -300,10 +328,42 @@ pub(crate) fn apply_config_transaction_locked(
     if let Err(error) = apply_config_locked(app) {
         return match rollback().and_then(|_| apply_config_locked(app)) {
             Ok(()) => Err(format!(
-                "configuration apply failed; previous DNS rules restored: {error}"
+                "configuration apply failed; previous configuration restored: {error}"
             )),
             Err(recovery) => Err(format!(
                 "configuration apply failed; rollback requires recovery: {error}; {recovery}"
+            )),
+        };
+    }
+    Ok(())
+}
+
+pub(crate) fn apply_routing_transaction_locked(
+    app: &App,
+    prepare: impl FnOnce() -> Result<(), String>,
+    rollback: impl FnOnce() -> Result<(), String>,
+) -> Result<(), String> {
+    let was_running = !owned_singbox_pids(app)?.is_empty();
+    prepare()?;
+    if let Err(error) = apply_config_locked(app) {
+        let stop_result = if was_running {
+            stop_all_direct(app, true)
+        } else {
+            Ok(())
+        };
+        let restored = rollback();
+        let recovery = stop_result.and(restored).and_then(|_| {
+            if was_running {
+                run_magicnet_function(app,
+                    "MAGICNET_TRANSPARENT_RESTORED_CONFIG=1 MAGICNET_SUB_CONFIG_LOCK_TIMEOUT=2 magicnet_start_kernel && magicnet_supervisors_start_detached")
+            } else { Ok(()) }
+        });
+        return match recovery {
+            Ok(()) => Err(format!(
+                "routing apply failed; previous configuration restored: {error}"
+            )),
+            Err(recovery) => Err(format!(
+                "routing apply failed; rollback requires recovery: {error}; {recovery}"
             )),
         };
     }

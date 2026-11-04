@@ -183,7 +183,8 @@ fn capabilities_value() -> Value {
                 "privacy_safe_network_identifiers",
                 "readiness_signals",
                 "lan_dns_routing",
-                "custom_doh"
+                "custom_doh",
+                "routing_policy_management"
             ],
             "private_commands": ["sub.inspect", "wifi.inspect", "routing.inspect", "dns.inspect", "dns.custom.inspect"],
             "json_flag_positions": ["prefix", "suffix"],
